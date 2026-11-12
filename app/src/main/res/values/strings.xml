@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">PayRoutine</string>
+    <string name="inicio">Inicio</string>
+    <string name="inicio_descripcion">Saldo del mes, próximos pagos y últimos movimientos.</string>
+    <string name="movimientos">Movimientos</string>
+    <string name="movimientos_descripcion">Historial de ingresos y gastos.</string>
+    <string name="presupuesto">Presupuesto</string>
+    <string name="presupuesto_descripcion">Presupuestos mensuales por categoría.</string>
+    <string name="pagos">Pagos</string>
+    <string name="pagos_descripcion">Cuotas y pagos pendientes.</string>
+    <string name="resumen">Resumen</string>
+    <string name="resumen_descripcion">Ingresos, gastos y distribución por categoría del mes.</string>
+    <string name="nuevo_movimiento">Nuevo movimiento</string>
+    <string name="nuevo_movimiento_descripcion">Registro de ingresos y gastos.</string>
+    <string name="volver">Volver</string>
+</resources>
