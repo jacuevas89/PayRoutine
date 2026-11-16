@@ -22,12 +22,21 @@ internal object DatosDeEjemplo {
         MovimientoEjemplo("Sueldo", "Ingreso fijo · 01 oct", "+$1.100.000", ingreso = true),
     )
 
+    val presupuestoOcio = PresupuestoEjemplo("Ocio", "$142.800", "$120.000", 119, "play", RojoGasto, FondoGasto)
+    const val excesoOcio = "$22.800"
+    val gastosOcio = listOf(
+        MovimientoEjemplo("Salida con amigos", "Ocio · 24 oct", "-$60.000"),
+        MovimientoEjemplo("Videojuego", "Ocio · 18 oct", "-$55.810"),
+        MovimientoEjemplo("Cine", "Ocio · 14 oct", "-$18.000"),
+        MovimientoEjemplo("Streaming", "Ocio · 10 oct", "-$8.990"),
+    )
+
     val presupuestos = listOf(
         PresupuestoEjemplo("Alimentación", "$210.000", "$250.000", 84, "cart"),
         PresupuestoEjemplo("Transporte", "$64.300", "$80.000", 80, "bus"),
         PresupuestoEjemplo("Hogar", "$380.000", "$400.000", 95, "house", NaranjaAlerta, FondoAlerta),
         PresupuestoEjemplo("Servicios", "$45.200", "$60.000", 75, "bolt"),
-        PresupuestoEjemplo("Ocio", "$142.800", "$120.000", 119, "play", RojoGasto, FondoGasto),
+        presupuestoOcio,
     )
 
     val pagos = listOf(
@@ -51,6 +60,13 @@ internal object DatosDeEjemplo {
     val formularioIngreso = FormularioMovimientoEjemplo(
         "Nuevo ingreso", "$ 150.000", listOf("Sueldo", "Freelance", "Otros ingresos"),
         "Ej: pago de proyecto", "Guardar ingreso", VerdeIngreso,
+    )
+
+    val consejosAhorro = listOf(
+        "Anota tus gastos hormiga" to "Los gastos chicos del día a día se acumulan. Registrarlos te ayuda a verlos.",
+        "Ahorra apenas recibas tu ingreso" to "Separa un monto fijo al inicio del mes, aunque sea pequeño, antes de gastar.",
+        "Revisa tus pagos pendientes" to "Mira los vencimientos de la semana para evitar atrasos y recargos.",
+        "Compara tu presupuesto cada semana" to "Si una categoría va muy alta a mitad de mes, ajústala antes de que termine.",
     )
 }
 

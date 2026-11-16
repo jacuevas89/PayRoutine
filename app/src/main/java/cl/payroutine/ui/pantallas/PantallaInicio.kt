@@ -64,6 +64,7 @@ internal fun PantallaInicio(
     verMovimientos: () -> Unit,
     verPagos: () -> Unit,
     verRecordatorios: () -> Unit,
+    verAjustes: () -> Unit,
     verMovimiento: (Int) -> Unit,
 ) {
     val datos = DatosDeEjemplo
@@ -73,12 +74,17 @@ internal fun PantallaInicio(
             Modifier.fillMaxWidth().background(AzulNoche).padding(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 20.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
                 Column(Modifier.weight(1f)) {
-                    Text(datos.saludo, color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                    Text(datos.saludo, color = Color.White, fontSize = 18.5.sp, lineHeight = 24.sp, fontWeight = FontWeight.Bold)
                     Etiqueta(datos.mes, TextoSobreAzul)
                 }
                 BotonIcono("bell", "Recordatorios", verRecordatorios, circular = true)
+                BotonIcono("settings", "Ajustes", verAjustes, circular = true, color = AzulNoche)
             }
             Tarjeta(Modifier.fillMaxWidth(), espacio = 10) {
                 Etiqueta("Saldo del mes")

@@ -52,7 +52,10 @@ internal fun Cabecera(
             ) {
                 if (volver != null) BotonIcono("back", "Volver", volver, Fondo)
                 Text(titulo, Modifier.weight(1f), color = Texto, fontSize = 20.sp, lineHeight = 24.sp, fontWeight = FontWeight.Bold)
-                if (accion != null && alAccionar != null) Enlace(accion, alAccionar)
+                if (accion != null) {
+                    if (alAccionar != null) Enlace(accion, alAccionar)
+                    else Destacado(accion, VerdeMarca)
+                }
             }
             HorizontalDivider(color = Borde)
         }
@@ -99,6 +102,14 @@ internal fun Icono(nombre: String, color: Color, modifier: Modifier = Modifier, 
         "list" -> R.drawable.icono_list
         "calendar" -> R.drawable.icono_cal
         "bell" -> R.drawable.icono_bell
+        "settings" -> R.drawable.icono_ajustes
+        "tag" -> R.drawable.icono_etiqueta
+        "bulb" -> R.drawable.icono_bombilla
+        "coin" -> R.drawable.icono_moneda
+        "moon" -> R.drawable.icono_luna
+        "download" -> R.drawable.icono_descarga
+        "heart" -> R.drawable.icono_corazon
+        "alert" -> R.drawable.icono_alerta
         "back" -> R.drawable.icono_back
         "next" -> R.drawable.icono_chev
         "check" -> R.drawable.icono_check
@@ -134,13 +145,14 @@ internal fun BotonIcono(
     alPulsar: (() -> Unit)? = null,
     fondo: Color = Color.White,
     circular: Boolean = false,
+    color: Color = Texto,
 ) {
     val forma = if (circular) CircleShape else RoundedCornerShape(12.dp)
     Box(
         Modifier.size(if (circular) 40.dp else 36.dp).clip(forma).background(fondo)
             .then(if (alPulsar == null) Modifier else Modifier.clickable(onClick = alPulsar)),
         contentAlignment = Alignment.Center,
-    ) { Icono(icono, Texto, descripcion = descripcion) }
+    ) { Icono(icono, color, descripcion = descripcion) }
 }
 
 @Composable

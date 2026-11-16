@@ -23,10 +23,13 @@ import cl.payroutine.ui.pantallas.*
 import cl.payroutine.ui.theme.*
 
 private const val BIENVENIDA = "bienvenida"
-private const val NUEVO_GASTO = "nuevo-gasto"
-private const val NUEVO_INGRESO = "nuevo-ingreso"
+private const val NUEVO_MOVIMIENTO = "nuevo-movimiento"
 private const val NUEVO_PAGO = "nuevo-pago"
 private const val EDITAR_PRESUPUESTO = "editar-presupuesto"
+private const val PRESUPUESTO_EXCEDIDO = "presupuesto-excedido"
+private const val AJUSTES = "ajustes"
+private const val CATEGORIAS = "categorias"
+private const val CONSEJOS_AHORRO = "consejos-ahorro"
 private const val RECORDATORIOS = "recordatorios"
 private const val CALENDARIO = "calendario"
 private const val HISTORIAL_PAGOS = "historial-pagos"
@@ -74,7 +77,7 @@ fun PayRoutineApp() {
             },
             floatingActionButton = {
                 val destino = when (seccionActual) {
-                    Seccion.Inicio, Seccion.Movimientos -> NUEVO_GASTO
+                    Seccion.Inicio, Seccion.Movimientos -> NUEVO_MOVIMIENTO
                     Seccion.Pagos -> NUEVO_PAGO
                     else -> null
                 }
@@ -108,19 +111,35 @@ fun PayRoutineApp() {
                         verMovimientos = { irA(Seccion.Movimientos) },
                         verPagos = { irA(Seccion.Pagos) },
                         verRecordatorios = { abrir(RECORDATORIOS) },
+                        verAjustes = { abrir(AJUSTES) },
                         verMovimiento = { abrir("$DETALLE_MOVIMIENTO/$it") },
                     )
                 }
                 composable(Seccion.Movimientos.ruta) { PantallaMovimientos { abrir("$DETALLE_MOVIMIENTO/$it") } }
-                composable(Seccion.Presupuesto.ruta) { PantallaPresupuesto { abrir(EDITAR_PRESUPUESTO) } }
+                composable(Seccion.Presupuesto.ruta) {
+                    PantallaPresupuesto(
+                        editar = { abrir(EDITAR_PRESUPUESTO) },
+                        verExcedido = { abrir(PRESUPUESTO_EXCEDIDO) },
+                    )
+                }
                 composable(Seccion.Pagos.ruta) {
                     PantallaPagos({ abrir(CALENDARIO) }, { abrir(HISTORIAL_PAGOS) }, { abrir(DETALLE_CUOTA) })
                 }
                 composable(Seccion.Resumen.ruta) { PantallaResumen() }
-                composable(NUEVO_GASTO) { PantallaNuevoMovimiento(false, ::volver) { abrir(NUEVO_INGRESO) } }
-                composable(NUEVO_INGRESO) { PantallaNuevoMovimiento(true, ::volver) { volver() } }
+                composable(NUEVO_MOVIMIENTO) { PantallaNuevoMovimiento(::volver) }
                 composable(NUEVO_PAGO) { PantallaNuevoPago(::volver) }
+                composable(PRESUPUESTO_EXCEDIDO) { PantallaPresupuestoExcedido(::volver) { abrir(EDITAR_PRESUPUESTO) } }
                 composable(EDITAR_PRESUPUESTO) { PantallaEditarPresupuesto(::volver) }
+                composable(AJUSTES) {
+                    PantallaAjustes(
+                        volver = ::volver,
+                        verCategorias = { abrir(CATEGORIAS) },
+                        verRecordatorios = { abrir(RECORDATORIOS) },
+                        verConsejos = { abrir(CONSEJOS_AHORRO) },
+                    )
+                }
+                composable(CATEGORIAS) { PantallaCategorias(::volver) }
+                composable(CONSEJOS_AHORRO) { PantallaConsejosAhorro(::volver) }
                 composable(RECORDATORIOS) { PantallaRecordatorios(::volver) }
                 composable(CALENDARIO) { PantallaCalendario(::volver) }
                 composable(HISTORIAL_PAGOS) { PantallaHistorialPagos(::volver) }
