@@ -15,6 +15,7 @@ import cl.payroutine.ui.theme.*
 
 @Composable
 internal fun PantallaAjustes(
+    apodo: String,
     volver: () -> Unit,
     verCategorias: () -> Unit,
     verRecordatorios: () -> Unit,
@@ -26,10 +27,10 @@ internal fun PantallaAjustes(
             Tarjeta(Modifier.fillMaxWidth()) {
                 Row(horizontalArrangement = Arrangement.spacedBy(14.dp), verticalAlignment = Alignment.CenterVertically) {
                     Box(Modifier.size(56.dp).background(VerdeMarca, CircleShape), contentAlignment = Alignment.Center) {
-                        Cifra("G", Color.White, 24)
+                        Cifra(apodo.take(1).uppercase(), Color.White, 24)
                     }
-                    Column {
-                        Cifra("Gisselle", tamano = 17)
+                    Column(Modifier.weight(1f)) {
+                        Cifra(apodo, tamano = 17)
                         Etiqueta("Tus datos se guardan en este teléfono")
                     }
                 }

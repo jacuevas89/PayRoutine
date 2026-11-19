@@ -61,6 +61,7 @@ internal fun PantallaBienvenida(comenzar: () -> Unit) {
 
 @Composable
 internal fun PantallaInicio(
+    apodo: String,
     verMovimientos: () -> Unit,
     verPagos: () -> Unit,
     verRecordatorios: () -> Unit,
@@ -80,7 +81,7 @@ internal fun PantallaInicio(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Column(Modifier.weight(1f)) {
-                    Text(datos.saludo, color = Color.White, fontSize = 18.5.sp, lineHeight = 24.sp, fontWeight = FontWeight.Bold)
+                    Text("Hola, $apodo", color = Color.White, fontSize = 18.5.sp, lineHeight = 24.sp, fontWeight = FontWeight.Bold)
                     Etiqueta(datos.mes, TextoSobreAzul)
                 }
                 BotonIcono("bell", "Recordatorios", verRecordatorios, circular = true)

@@ -4,7 +4,6 @@ import androidx.compose.ui.graphics.Color
 import cl.payroutine.ui.theme.*
 
 internal object DatosDeEjemplo {
-    const val saludo = "Hola, Grupo proyecto esp."
     const val mes = "Octubre 2026"
     const val saldo = "$407.700"
     const val ingresos = "$1.250.000"

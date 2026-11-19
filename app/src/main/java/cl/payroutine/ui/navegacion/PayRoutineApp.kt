@@ -7,6 +7,7 @@ import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -21,8 +22,8 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import cl.payroutine.ui.pantallas.*
 import cl.payroutine.ui.theme.*
+import cl.payroutine.viewmodel.PerfilViewModel
 
-private const val BIENVENIDA = "bienvenida"
 private const val NUEVO_MOVIMIENTO = "nuevo-movimiento"
 private const val NUEVO_PAGO = "nuevo-pago"
 private const val EDITAR_PRESUPUESTO = "editar-presupuesto"
@@ -45,12 +46,19 @@ private enum class Seccion(val ruta: String, val titulo: String, val icono: Stri
 }
 
 @Composable
-fun PayRoutineApp() {
+internal fun PayRoutineApp(perfil: PerfilViewModel) {
+    val estado by perfil.estado.collectAsState()
+    val usuario = estado.usuario
+    if (estado.cargando || estado.errorCarga || usuario == null) {
+        PrimerUso(estado, perfil::reintentarCarga, perfil::registrar)
+        return
+    }
+
     val navegador = rememberNavController()
     val entradaActual by navegador.currentBackStackEntryAsState()
-    val rutaActual = entradaActual?.destination?.route ?: BIENVENIDA
+    val rutaActual = entradaActual?.destination?.route ?: Seccion.Inicio.ruta
     val seccionActual = Seccion.entries.firstOrNull { it.ruta == rutaActual }
-    val fondoSuperior = if (rutaActual == BIENVENIDA || seccionActual == Seccion.Inicio) AzulNoche else Color.White
+    val fondoSuperior = if (seccionActual == Seccion.Inicio) AzulNoche else Color.White
 
     fun abrir(ruta: String) = navegador.navigate(ruta) { launchSingleTop = true }
     fun volver() { navegador.popBackStack() }
@@ -67,10 +75,10 @@ fun PayRoutineApp() {
     AjustarBarraDeEstado(fondoSuperior == Color.White)
 
     Column(Modifier.fillMaxSize().background(fondoSuperior)) {
-        if (rutaActual != BIENVENIDA) Spacer(Modifier.windowInsetsTopHeight(WindowInsets.statusBars))
+        Spacer(Modifier.windowInsetsTopHeight(WindowInsets.statusBars))
         Scaffold(
             modifier = Modifier.weight(1f),
-            containerColor = if (rutaActual == BIENVENIDA) AzulNoche else Fondo,
+            containerColor = Fondo,
             contentWindowInsets = WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom),
             bottomBar = {
                 if (seccionActual != null) BarraInferior(seccionActual, ::irA)
@@ -95,19 +103,12 @@ fun PayRoutineApp() {
         ) { espacioInterior ->
             NavHost(
                 navController = navegador,
-                startDestination = BIENVENIDA,
+                startDestination = Seccion.Inicio.ruta,
                 modifier = Modifier.fillMaxSize().padding(espacioInterior),
             ) {
-                composable(BIENVENIDA) {
-                    PantallaBienvenida {
-                        navegador.navigate(Seccion.Inicio.ruta) {
-                            popUpTo(BIENVENIDA) { inclusive = true }
-                            launchSingleTop = true
-                        }
-                    }
-                }
                 composable(Seccion.Inicio.ruta) {
                     PantallaInicio(
+                        apodo = estado.usuario?.apodo ?: usuario.apodo,
                         verMovimientos = { irA(Seccion.Movimientos) },
                         verPagos = { irA(Seccion.Pagos) },
                         verRecordatorios = { abrir(RECORDATORIOS) },
@@ -132,6 +133,7 @@ fun PayRoutineApp() {
                 composable(EDITAR_PRESUPUESTO) { PantallaEditarPresupuesto(::volver) }
                 composable(AJUSTES) {
                     PantallaAjustes(
+                        apodo = estado.usuario?.apodo ?: usuario.apodo,
                         volver = ::volver,
                         verCategorias = { abrir(CATEGORIAS) },
                         verRecordatorios = { abrir(RECORDATORIOS) },
