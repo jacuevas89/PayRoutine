@@ -7,6 +7,7 @@ import androidx.activity.enableEdgeToEdge
 import androidx.lifecycle.ViewModelProvider
 import cl.payroutine.ui.navegacion.PayRoutineApp
 import cl.payroutine.ui.theme.PayRoutineTheme
+import cl.payroutine.viewmodel.FinanzasViewModel
 import cl.payroutine.viewmodel.PerfilViewModel
 
 class MainActivity : ComponentActivity() {
@@ -14,9 +15,10 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         val perfil = ViewModelProvider(this)[PerfilViewModel::class.java]
+        val finanzas = ViewModelProvider(this)[FinanzasViewModel::class.java]
         setContent {
             PayRoutineTheme {
-                PayRoutineApp(perfil)
+                PayRoutineApp(perfil, finanzas)
             }
         }
     }

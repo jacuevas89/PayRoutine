@@ -18,13 +18,17 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavBackStackEntry
+import androidx.navigation.NavType
+import androidx.navigation.navArgument
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import cl.payroutine.ui.pantallas.*
 import cl.payroutine.ui.theme.*
+import cl.payroutine.viewmodel.DatosInicio
 import cl.payroutine.viewmodel.EstadoPerfil
+import cl.payroutine.viewmodel.FinanzasViewModel
 import cl.payroutine.viewmodel.PerfilViewModel
 
 private const val NUEVO_MOVIMIENTO = "nuevo-movimiento"
@@ -49,14 +53,20 @@ private enum class Seccion(val ruta: String, val titulo: String, val icono: Stri
 }
 
 @Composable
-internal fun PayRoutineApp(perfil: PerfilViewModel) {
+internal fun PayRoutineApp(perfil: PerfilViewModel, finanzas: FinanzasViewModel) {
     val estado by perfil.estado.collectAsState()
-    NavegacionPayRoutine(estado, perfil::reintentarCarga, perfil::registrar)
+    val inicio = if (estado.usuario != null && !estado.errorCarga) {
+        finanzas.inicio.collectAsState().value
+    } else {
+        null
+    }
+    NavegacionPayRoutine(estado, inicio, perfil::reintentarCarga, perfil::registrar)
 }
 
 @Composable
 internal fun NavegacionPayRoutine(
     estado: EstadoPerfil,
+    inicio: DatosInicio?,
     reintentarCarga: () -> Unit,
     registrar: (String, String) -> Unit,
 ) {
@@ -66,14 +76,15 @@ internal fun NavegacionPayRoutine(
         return
     }
 
-    NavegacionPrincipal(usuario.apodo)
+    NavegacionPrincipal(usuario.apodo, inicio)
 }
 
 @Composable
-private fun NavegacionPrincipal(apodo: String) {
+private fun NavegacionPrincipal(apodo: String, inicio: DatosInicio?) {
     val navegador = rememberNavController()
     val entradaActual = navegador.currentBackStackEntryAsState().value
     val apodoActual by rememberUpdatedState(apodo)
+    val datosActuales by rememberUpdatedState(inicio)
     val rutaActual = entradaActual?.destination?.route ?: Seccion.Inicio.ruta
     val seccionActual = Seccion.entries.firstOrNull { it.ruta == rutaActual }
     val fondoSuperior = if (seccionActual == Seccion.Inicio) AzulNoche else Color.White
@@ -136,6 +147,7 @@ private fun NavegacionPrincipal(apodo: String) {
                 composable(Seccion.Inicio.ruta) { origen ->
                     PantallaInicio(
                         apodo = apodoActual,
+                        datos = datosActuales,
                         verMovimientos = { irA(origen, Seccion.Movimientos) },
                         verPagos = { irA(origen, Seccion.Pagos) },
                         verRecordatorios = { abrir(origen, RECORDATORIOS) },
@@ -144,7 +156,7 @@ private fun NavegacionPrincipal(apodo: String) {
                     )
                 }
                 composable(Seccion.Movimientos.ruta) { origen ->
-                    PantallaMovimientos { abrir(origen, "$DETALLE_MOVIMIENTO/$it") }
+                    PantallaMovimientos(datosActuales) { abrir(origen, "$DETALLE_MOVIMIENTO/$it") }
                 }
                 composable(Seccion.Presupuesto.ruta) { origen ->
                     PantallaPresupuesto(
@@ -181,9 +193,14 @@ private fun NavegacionPrincipal(apodo: String) {
                 composable(CALENDARIO) { origen -> PantallaCalendario { volver(origen) } }
                 composable(HISTORIAL_PAGOS) { origen -> PantallaHistorialPagos { volver(origen) } }
                 composable(DETALLE_CUOTA) { origen -> PantallaDetalleCuota { volver(origen) } }
-                composable("$DETALLE_MOVIMIENTO/{indice}") { entrada ->
-                    val indice = entrada.arguments?.getString("indice")?.toIntOrNull() ?: 0
-                    PantallaDetalleMovimiento(indice) { volver(entrada) }
+                composable(
+                    "$DETALLE_MOVIMIENTO/{id}",
+                    arguments = listOf(navArgument("id") { type = NavType.IntType }),
+                ) { entrada ->
+                    val id = requireNotNull(entrada.arguments).getInt("id")
+                    val datos = datosActuales
+                    val fila = datos?.movimientos?.find { it.movimiento.id == id }
+                    PantallaDetalleMovimiento(fila, datos?.fecha?.zona) { volver(entrada) }
                 }
             }
         }

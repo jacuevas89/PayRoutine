@@ -27,6 +27,7 @@ class RepositorioFinanzas(baseDatos: BaseDatosPayRoutine) {
 
     fun observarCategorias() = categoriaDao.observarTodos()
     fun observarMovimientos() = movimientoDao.observarTodos()
+    fun observarMovimientosConCategoria() = movimientoDao.observarConCategoria()
     fun observarPresupuestos() = presupuestoDao.observarTodos()
     fun observarPagos() = pagoPendienteDao.observarTodos()
 

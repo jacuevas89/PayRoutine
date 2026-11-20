@@ -41,7 +41,7 @@ internal fun PantallaAjustes(
             FilaAjustes("Moneda", "coin", VerdeMarca, FondoMarca, "CLP $")
             FilaAjustes("Tema", "moon", AzulNoche, FondoSelector, "Claro")
             FilaAjustes("Respaldo de datos", "download", AzulNoche, FondoSelector, "Exportar")
-            Etiqueta("Gestor de vida · versión 1.0 (prototipo)")
+            Etiqueta("PayRoutine · Versión 1.0 (prototipo)")
         }
     }
 }

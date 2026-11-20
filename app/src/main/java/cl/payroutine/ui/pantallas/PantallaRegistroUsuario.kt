@@ -10,7 +10,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import cl.payroutine.ui.theme.RojoGasto
+import cl.payroutine.ui.theme.TextoSecundario
 
 @Composable
 internal fun PantallaRegistroUsuario(
@@ -27,7 +29,12 @@ internal fun PantallaRegistroUsuario(
         Cabecera("Tu perfil", volver)
         Cuerpo(Modifier.weight(1f)) {
             Tarjeta(Modifier.fillMaxWidth(), espacio = 12) {
-                Etiqueta("Usaremos tu apodo para saludarte en la app.")
+                Text(
+                    "Usaremos tu apodo para saludarte en la app.",
+                    color = TextoSecundario,
+                    fontSize = 14.sp,
+                    lineHeight = 18.sp,
+                )
                 CampoPerfil("Nombre completo", nombreCompleto, !guardando, intentoGuardar, ImeAction.Next) {
                     nombreCompleto = it
                 }

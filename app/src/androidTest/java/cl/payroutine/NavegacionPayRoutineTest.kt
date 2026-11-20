@@ -6,10 +6,20 @@ import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import cl.payroutine.datos.local.dao.MovimientoConCategoria
+import cl.payroutine.datos.local.entidad.Movimiento
+import cl.payroutine.datos.local.entidad.PagoPendiente
+import cl.payroutine.datos.local.entidad.TipoMovimiento
 import cl.payroutine.datos.local.entidad.Usuario
 import cl.payroutine.ui.navegacion.NavegacionPayRoutine
+import cl.payroutine.ui.pantallas.montoEnPantalla
 import cl.payroutine.ui.theme.PayRoutineTheme
 import cl.payroutine.viewmodel.EstadoPerfil
+import cl.payroutine.viewmodel.FechaLocal
+import cl.payroutine.viewmodel.calcularInicio
+import java.time.LocalDate
+import java.time.ZoneOffset
+import java.util.Date
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -24,7 +34,7 @@ class NavegacionPayRoutineTest {
         val estado = mutableStateOf(EstadoPerfil(cargando = false))
         compose.setContent {
             PayRoutineTheme {
-                NavegacionPayRoutine(estado.value, {}) { nombre, apodo ->
+                NavegacionPayRoutine(estado.value, null, {}) { nombre, apodo ->
                     estado.value = estado.value.copy(usuario = usuario.copy(nombreCompleto = nombre, apodo = apodo))
                 }
             }
@@ -51,8 +61,9 @@ class NavegacionPayRoutineTest {
         iniciarConPerfil()
         ver("Hola, Mari")
         abrirMovimiento("Últimos movimientos")
-        tocar("Supermercado")
+        tocar("Alimentación ·", parcial = true)
         ver("Detalle")
+        ver("Compra de prueba")
         atrasAndroid()
         ver("Últimos movimientos")
 
@@ -60,8 +71,9 @@ class NavegacionPayRoutineTest {
         ver("Todos")
         tocar("Movimientos")
         abrirMovimiento("Todos")
-        tocar("Transporte")
+        tocar("Transporte ·", parcial = true)
         ver("Detalle")
+        ver("Pasaje de prueba")
         volver()
         ver("Todos")
         atrasAndroid()
@@ -130,9 +142,40 @@ class NavegacionPayRoutineTest {
     private fun iniciarConPerfil() {
         compose.setContent {
             PayRoutineTheme {
-                NavegacionPayRoutine(EstadoPerfil(cargando = false, usuario = usuario), {}) { _, _ -> }
+                NavegacionPayRoutine(EstadoPerfil(cargando = false, usuario = usuario), inicio, {}) { _, _ -> }
             }
         }
+    }
+
+    @Test
+    fun inicioReflejaCambiosYElDetalleRespetaElIdAunqueSeReordeneLaLista() {
+        val datos = mutableStateOf(calcularInicio(fecha, emptyList(), emptyList()))
+        compose.setContent {
+            PayRoutineTheme {
+                NavegacionPayRoutine(EstadoPerfil(cargando = false, usuario = usuario), datos.value, {}) { _, _ -> }
+            }
+        }
+        ver("Noviembre 2026")
+        ver("Todavía no tienes movimientos registrados.")
+        ver("No tienes pagos vencidos ni por vencer este mes.")
+        compose.onAllNodesWithText(montoEnPantalla(0)).assertCountEquals(3)
+
+        compose.runOnIdle { datos.value = inicio }
+        ver("Próximo pago: Tarjeta de crédito")
+        ver("Vence en 4 días · ${montoEnPantalla(120000)}")
+        tocar("Alimentación ·", parcial = true)
+        ver("Compra de prueba")
+        compose.runOnIdle {
+            datos.value = inicio.copy(movimientos = inicio.movimientos.reversed())
+        }
+        ver("Compra de prueba")
+        compose.runOnIdle {
+            datos.value = inicio.copy(movimientos = inicio.movimientos.filter { it.movimiento.id != 57 })
+        }
+        ver("El movimiento ya no está disponible.")
+        volver()
+        ver("Últimos movimientos")
+        ver("Gasto")
     }
 
     private fun abrirMovimiento(origen: String) {
@@ -159,12 +202,29 @@ class NavegacionPayRoutineTest {
         }
     }
 
-    private fun tocar(texto: String) =
-        compose.onNode(hasText(texto) and hasClickAction()).performClick()
+    private fun tocar(texto: String, parcial: Boolean = false) =
+        compose.onNode(hasText(texto, substring = parcial) and hasClickAction()).performClick()
 
     private fun ver(texto: String) = compose.onNodeWithText(texto).assertIsDisplayed()
     private fun volver() = compose.onNodeWithContentDescription("Volver").performClick()
     private fun atrasAndroid() = compose.runOnIdle { compose.activity.onBackPressedDispatcher.onBackPressed() }
 
     private val usuario = Usuario("6f828433-fa9c-4ed4-8cf3-cfc95293d2e7", "María Pérez", "Mari")
+    private val fecha = FechaLocal(LocalDate.of(2026, 11, 19), ZoneOffset.UTC)
+    private val inicio = calcularInicio(
+        fecha,
+        listOf(
+            MovimientoConCategoria(
+                Movimiento(57, TipoMovimiento.Gasto, 124500.0, dia(19), 1, "Compra de prueba"),
+                "Alimentación",
+            ),
+            MovimientoConCategoria(
+                Movimiento(23, TipoMovimiento.Gasto, 18000.0, dia(18), 2, "Pasaje de prueba"),
+                "Transporte",
+            ),
+        ),
+        listOf(PagoPendiente(9, "Tarjeta de crédito", 120000.0, dia(23), false, pagado = false)),
+    )
+
+    private fun dia(dia: Int) = Date.from(fecha.hoy.withDayOfMonth(dia).atStartOfDay(fecha.zona).toInstant())
 }
