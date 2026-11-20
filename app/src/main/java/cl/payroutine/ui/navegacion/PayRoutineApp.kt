@@ -7,7 +7,9 @@ import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -15,14 +17,20 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.navigation.NavBackStackEntry
+import androidx.navigation.NavType
+import androidx.navigation.navArgument
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import cl.payroutine.ui.pantallas.*
 import cl.payroutine.ui.theme.*
+import cl.payroutine.viewmodel.DatosInicio
+import cl.payroutine.viewmodel.EstadoPerfil
+import cl.payroutine.viewmodel.FinanzasViewModel
+import cl.payroutine.viewmodel.PerfilViewModel
 
-private const val BIENVENIDA = "bienvenida"
 private const val NUEVO_MOVIMIENTO = "nuevo-movimiento"
 private const val NUEVO_PAGO = "nuevo-pago"
 private const val EDITAR_PRESUPUESTO = "editar-presupuesto"
@@ -45,16 +53,54 @@ private enum class Seccion(val ruta: String, val titulo: String, val icono: Stri
 }
 
 @Composable
-fun PayRoutineApp() {
-    val navegador = rememberNavController()
-    val entradaActual by navegador.currentBackStackEntryAsState()
-    val rutaActual = entradaActual?.destination?.route ?: BIENVENIDA
-    val seccionActual = Seccion.entries.firstOrNull { it.ruta == rutaActual }
-    val fondoSuperior = if (rutaActual == BIENVENIDA || seccionActual == Seccion.Inicio) AzulNoche else Color.White
+internal fun PayRoutineApp(perfil: PerfilViewModel, finanzas: FinanzasViewModel) {
+    val estado by perfil.estado.collectAsState()
+    val inicio = if (estado.usuario != null && !estado.errorCarga) {
+        finanzas.inicio.collectAsState().value
+    } else {
+        null
+    }
+    NavegacionPayRoutine(estado, inicio, perfil::reintentarCarga, perfil::registrar)
+}
 
-    fun abrir(ruta: String) = navegador.navigate(ruta) { launchSingleTop = true }
-    fun volver() { navegador.popBackStack() }
-    fun irA(seccion: Seccion) {
+@Composable
+internal fun NavegacionPayRoutine(
+    estado: EstadoPerfil,
+    inicio: DatosInicio?,
+    reintentarCarga: () -> Unit,
+    registrar: (String, String) -> Unit,
+) {
+    val usuario = estado.usuario
+    if (estado.cargando || estado.errorCarga || usuario == null) {
+        PrimerUso(estado, reintentarCarga, registrar)
+        return
+    }
+
+    NavegacionPrincipal(usuario.apodo, inicio)
+}
+
+@Composable
+private fun NavegacionPrincipal(apodo: String, inicio: DatosInicio?) {
+    val navegador = rememberNavController()
+    val entradaActual = navegador.currentBackStackEntryAsState().value
+    val apodoActual by rememberUpdatedState(apodo)
+    val datosActuales by rememberUpdatedState(inicio)
+    val rutaActual = entradaActual?.destination?.route ?: Seccion.Inicio.ruta
+    val seccionActual = Seccion.entries.firstOrNull { it.ruta == rutaActual }
+    val fondoSuperior = if (seccionActual == Seccion.Inicio) AzulNoche else Color.White
+
+    // Los destinos salientes pueden seguir visibles durante la transición.
+    fun abrir(origen: NavBackStackEntry?, ruta: String) {
+        if (origen == null || navegador.currentBackStackEntry !== origen) return
+        navegador.navigate(ruta) { launchSingleTop = true }
+    }
+
+    fun volver(origen: NavBackStackEntry) {
+        if (navegador.currentBackStackEntry === origen) navegador.popBackStack()
+    }
+
+    fun irA(origen: NavBackStackEntry?, seccion: Seccion) {
+        if (origen == null || navegador.currentBackStackEntry !== origen || origen.destination.route == seccion.ruta) return
         navegador.navigate(seccion.ruta) {
             popUpTo(Seccion.Inicio.ruta) {
                 saveState = true
@@ -67,13 +113,13 @@ fun PayRoutineApp() {
     AjustarBarraDeEstado(fondoSuperior == Color.White)
 
     Column(Modifier.fillMaxSize().background(fondoSuperior)) {
-        if (rutaActual != BIENVENIDA) Spacer(Modifier.windowInsetsTopHeight(WindowInsets.statusBars))
+        Spacer(Modifier.windowInsetsTopHeight(WindowInsets.statusBars))
         Scaffold(
             modifier = Modifier.weight(1f),
-            containerColor = if (rutaActual == BIENVENIDA) AzulNoche else Fondo,
+            containerColor = Fondo,
             contentWindowInsets = WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom),
             bottomBar = {
-                if (seccionActual != null) BarraInferior(seccionActual, ::irA)
+                if (seccionActual != null) BarraInferior(seccionActual) { irA(entradaActual, it) }
             },
             floatingActionButton = {
                 val destino = when (seccionActual) {
@@ -83,7 +129,7 @@ fun PayRoutineApp() {
                 }
                 if (destino != null) {
                     FloatingActionButton(
-                        onClick = { abrir(destino) },
+                        onClick = { abrir(entradaActual, destino) },
                         shape = CircleShape,
                         containerColor = VerdeMarca,
                         contentColor = Color.White,
@@ -95,58 +141,66 @@ fun PayRoutineApp() {
         ) { espacioInterior ->
             NavHost(
                 navController = navegador,
-                startDestination = BIENVENIDA,
+                startDestination = Seccion.Inicio.ruta,
                 modifier = Modifier.fillMaxSize().padding(espacioInterior),
             ) {
-                composable(BIENVENIDA) {
-                    PantallaBienvenida {
-                        navegador.navigate(Seccion.Inicio.ruta) {
-                            popUpTo(BIENVENIDA) { inclusive = true }
-                            launchSingleTop = true
-                        }
-                    }
-                }
-                composable(Seccion.Inicio.ruta) {
+                composable(Seccion.Inicio.ruta) { origen ->
                     PantallaInicio(
-                        verMovimientos = { irA(Seccion.Movimientos) },
-                        verPagos = { irA(Seccion.Pagos) },
-                        verRecordatorios = { abrir(RECORDATORIOS) },
-                        verAjustes = { abrir(AJUSTES) },
-                        verMovimiento = { abrir("$DETALLE_MOVIMIENTO/$it") },
+                        apodo = apodoActual,
+                        datos = datosActuales,
+                        verMovimientos = { irA(origen, Seccion.Movimientos) },
+                        verPagos = { irA(origen, Seccion.Pagos) },
+                        verRecordatorios = { abrir(origen, RECORDATORIOS) },
+                        verAjustes = { abrir(origen, AJUSTES) },
+                        verMovimiento = { abrir(origen, "$DETALLE_MOVIMIENTO/$it") },
                     )
                 }
-                composable(Seccion.Movimientos.ruta) { PantallaMovimientos { abrir("$DETALLE_MOVIMIENTO/$it") } }
-                composable(Seccion.Presupuesto.ruta) {
+                composable(Seccion.Movimientos.ruta) { origen ->
+                    PantallaMovimientos(datosActuales) { abrir(origen, "$DETALLE_MOVIMIENTO/$it") }
+                }
+                composable(Seccion.Presupuesto.ruta) { origen ->
                     PantallaPresupuesto(
-                        editar = { abrir(EDITAR_PRESUPUESTO) },
-                        verExcedido = { abrir(PRESUPUESTO_EXCEDIDO) },
+                        editar = { abrir(origen, EDITAR_PRESUPUESTO) },
+                        verExcedido = { abrir(origen, PRESUPUESTO_EXCEDIDO) },
                     )
                 }
-                composable(Seccion.Pagos.ruta) {
-                    PantallaPagos({ abrir(CALENDARIO) }, { abrir(HISTORIAL_PAGOS) }, { abrir(DETALLE_CUOTA) })
+                composable(Seccion.Pagos.ruta) { origen ->
+                    PantallaPagos(
+                        verCalendario = { abrir(origen, CALENDARIO) },
+                        verHistorial = { abrir(origen, HISTORIAL_PAGOS) },
+                        verCuota = { abrir(origen, DETALLE_CUOTA) },
+                    )
                 }
                 composable(Seccion.Resumen.ruta) { PantallaResumen() }
-                composable(NUEVO_MOVIMIENTO) { PantallaNuevoMovimiento(::volver) }
-                composable(NUEVO_PAGO) { PantallaNuevoPago(::volver) }
-                composable(PRESUPUESTO_EXCEDIDO) { PantallaPresupuestoExcedido(::volver) { abrir(EDITAR_PRESUPUESTO) } }
-                composable(EDITAR_PRESUPUESTO) { PantallaEditarPresupuesto(::volver) }
-                composable(AJUSTES) {
+                composable(NUEVO_MOVIMIENTO) { origen -> PantallaNuevoMovimiento { volver(origen) } }
+                composable(NUEVO_PAGO) { origen -> PantallaNuevoPago { volver(origen) } }
+                composable(PRESUPUESTO_EXCEDIDO) { origen ->
+                    PantallaPresupuestoExcedido(volver = { volver(origen) }, editar = { abrir(origen, EDITAR_PRESUPUESTO) })
+                }
+                composable(EDITAR_PRESUPUESTO) { origen -> PantallaEditarPresupuesto { volver(origen) } }
+                composable(AJUSTES) { origen ->
                     PantallaAjustes(
-                        volver = ::volver,
-                        verCategorias = { abrir(CATEGORIAS) },
-                        verRecordatorios = { abrir(RECORDATORIOS) },
-                        verConsejos = { abrir(CONSEJOS_AHORRO) },
+                        apodo = apodoActual,
+                        volver = { volver(origen) },
+                        verCategorias = { abrir(origen, CATEGORIAS) },
+                        verRecordatorios = { abrir(origen, RECORDATORIOS) },
+                        verConsejos = { abrir(origen, CONSEJOS_AHORRO) },
                     )
                 }
-                composable(CATEGORIAS) { PantallaCategorias(::volver) }
-                composable(CONSEJOS_AHORRO) { PantallaConsejosAhorro(::volver) }
-                composable(RECORDATORIOS) { PantallaRecordatorios(::volver) }
-                composable(CALENDARIO) { PantallaCalendario(::volver) }
-                composable(HISTORIAL_PAGOS) { PantallaHistorialPagos(::volver) }
-                composable(DETALLE_CUOTA) { PantallaDetalleCuota(::volver) }
-                composable("$DETALLE_MOVIMIENTO/{indice}") { entrada ->
-                    val indice = entrada.arguments?.getString("indice")?.toIntOrNull() ?: 0
-                    PantallaDetalleMovimiento(indice, ::volver)
+                composable(CATEGORIAS) { origen -> PantallaCategorias { volver(origen) } }
+                composable(CONSEJOS_AHORRO) { origen -> PantallaConsejosAhorro { volver(origen) } }
+                composable(RECORDATORIOS) { origen -> PantallaRecordatorios { volver(origen) } }
+                composable(CALENDARIO) { origen -> PantallaCalendario { volver(origen) } }
+                composable(HISTORIAL_PAGOS) { origen -> PantallaHistorialPagos { volver(origen) } }
+                composable(DETALLE_CUOTA) { origen -> PantallaDetalleCuota { volver(origen) } }
+                composable(
+                    "$DETALLE_MOVIMIENTO/{id}",
+                    arguments = listOf(navArgument("id") { type = NavType.IntType }),
+                ) { entrada ->
+                    val id = requireNotNull(entrada.arguments).getInt("id")
+                    val datos = datosActuales
+                    val fila = datos?.movimientos?.find { it.movimiento.id == id }
+                    PantallaDetalleMovimiento(fila, datos?.fecha?.zona) { volver(entrada) }
                 }
             }
         }

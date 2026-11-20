@@ -19,6 +19,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import cl.payroutine.R
 import cl.payroutine.ui.theme.*
+import cl.payroutine.viewmodel.DatosInicio
+import cl.payroutine.viewmodel.PagoEnInicio
 
 @Composable
 internal fun PantallaBienvenida(comenzar: () -> Unit) {
@@ -61,14 +63,14 @@ internal fun PantallaBienvenida(comenzar: () -> Unit) {
 
 @Composable
 internal fun PantallaInicio(
+    apodo: String,
+    datos: DatosInicio?,
     verMovimientos: () -> Unit,
     verPagos: () -> Unit,
     verRecordatorios: () -> Unit,
     verAjustes: () -> Unit,
     verMovimiento: (Int) -> Unit,
 ) {
-    val datos = DatosDeEjemplo
-    val recientes = listOf(0, 1, 3)
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
         Column(
             Modifier.fillMaxWidth().background(AzulNoche).padding(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 20.dp),
@@ -80,15 +82,15 @@ internal fun PantallaInicio(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Column(Modifier.weight(1f)) {
-                    Text(datos.saludo, color = Color.White, fontSize = 18.5.sp, lineHeight = 24.sp, fontWeight = FontWeight.Bold)
-                    Etiqueta(datos.mes, TextoSobreAzul)
+                    Text("Hola, $apodo", color = Color.White, fontSize = 18.5.sp, lineHeight = 24.sp, fontWeight = FontWeight.Bold)
+                    if (datos != null) Etiqueta(mesEnPantalla(datos.fecha.hoy), TextoSobreAzul)
                 }
                 BotonIcono("bell", "Recordatorios", verRecordatorios, circular = true)
                 BotonIcono("settings", "Ajustes", verAjustes, circular = true, color = AzulNoche)
             }
             Tarjeta(Modifier.fillMaxWidth(), espacio = 10) {
                 Etiqueta("Saldo del mes")
-                Cifra(datos.saldo, tamano = 34)
+                Cifra(datos?.let { montoEnPantalla(it.saldo) } ?: "—", tamano = 34)
                 HorizontalDivider(color = Borde)
                 Row(Modifier.fillMaxWidth()) {
                     Column(Modifier.weight(1f)) {
@@ -96,34 +98,68 @@ internal fun PantallaInicio(
                             Icono("down", VerdeIngreso, Modifier.size(14.dp))
                             Etiqueta("Ingresos")
                         }
-                        Cifra(datos.ingresos, tamano = 17)
+                        Cifra(datos?.let { montoEnPantalla(it.ingresos) } ?: "—", tamano = 17)
                     }
                     Column(Modifier.weight(1f)) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Icono("up", RojoGasto, Modifier.size(14.dp))
                             Etiqueta("Gastos")
                         }
-                        Cifra(datos.gastos, tamano = 17)
+                        Cifra(datos?.let { montoEnPantalla(it.gastos) } ?: "—", tamano = 17)
                     }
                 }
             }
         }
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Tarjeta(Modifier.fillMaxWidth(), color = FondoAlerta, relleno = 14, alPulsar = verPagos) {
-                Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Icono("calendar", NaranjaAlerta)
-                    Column(Modifier.weight(1f)) {
-                        Destacado("Próximo pago: Tarjeta de crédito")
-                        Etiqueta("Vence en 4 días · " + datos.pagos.first().monto)
-                    }
-                    Icono("next", TextoSecundario)
-                }
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                Text("Pagos pendientes", fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+                Enlace("Ver pagos", verPagos)
+            }
+            when {
+                datos == null -> Etiqueta("Cargando pagos…")
+                datos.pagosPendientes.isEmpty() -> Etiqueta("No tienes pagos vencidos ni por vencer este mes.")
+                else -> datos.pagosPendientes.forEach { TarjetaPagoInicio(it, verPagos) }
             }
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                 Text("Últimos movimientos", fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
                 Enlace("Ver todos", verMovimientos)
             }
-            recientes.forEach { indice -> TarjetaMovimiento(datos.movimientos[indice]) { verMovimiento(indice) } }
+            when {
+                datos == null -> Etiqueta("Cargando movimientos…")
+                datos.recientes.isEmpty() -> Etiqueta("Todavía no tienes movimientos registrados.")
+                else -> datos.recientes.forEach { fila ->
+                    TarjetaMovimiento(fila, datos.fecha.zona) { verMovimiento(fila.movimiento.id) }
+                }
+            }
+            Spacer(Modifier.height(56.dp))
+        }
+    }
+}
+
+@Composable
+private fun TarjetaPagoInicio(datos: PagoEnInicio, verPagos: () -> Unit) {
+    val dias = datos.diasParaVencer
+    val vencido = dias < 0
+    val titulo = if (vencido) "Pago vencido" else "Próximo pago"
+    val plazo = when {
+        vencido -> "Venció el ${fechaEnPantalla(datos.vencimiento)}"
+        dias == 0L -> "Vence hoy"
+        dias == 1L -> "Vence mañana"
+        else -> "Vence en $dias días"
+    }
+    Tarjeta(
+        Modifier.fillMaxWidth(),
+        color = if (vencido) FondoGasto else FondoAlerta,
+        relleno = 14,
+        alPulsar = verPagos,
+    ) {
+        Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+            Icono("calendar", if (vencido) RojoGasto else NaranjaAlerta)
+            Column(Modifier.weight(1f)) {
+                Destacado("$titulo: ${datos.pago.descripcion}")
+                Etiqueta("$plazo · ${montoEnPantalla(datos.pago.monto)}")
+            }
+            Icono("next", TextoSecundario)
         }
     }
 }
