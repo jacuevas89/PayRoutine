@@ -162,10 +162,15 @@ internal fun Enlace(texto: String, alPulsar: () -> Unit) {
 }
 
 @Composable
-internal fun BotonPrincipal(texto: String, modifier: Modifier = Modifier, alPulsar: (() -> Unit)? = null) {
+internal fun BotonPrincipal(
+    texto: String,
+    modifier: Modifier = Modifier,
+    habilitado: Boolean = true,
+    alPulsar: (() -> Unit)? = null,
+) {
     val forma = RoundedCornerShape(14.dp)
     if (alPulsar != null) {
-        Button(alPulsar, modifier.fillMaxWidth().height(46.dp), shape = forma) {
+        Button(alPulsar, modifier.fillMaxWidth().height(46.dp), enabled = habilitado, shape = forma) {
             Destacado(texto, Color.White)
         }
     } else {

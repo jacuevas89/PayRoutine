@@ -4,7 +4,6 @@ import androidx.compose.ui.graphics.Color
 import cl.payroutine.ui.theme.*
 
 internal object DatosDeEjemplo {
-    const val saludo = "Hola, Grupo proyecto esp."
     const val mes = "Octubre 2026"
     const val saldo = "$407.700"
     const val ingresos = "$1.250.000"
@@ -12,15 +11,6 @@ internal object DatosDeEjemplo {
     const val presupuestoTotal = "$910.000"
     const val presupuestoDisponible = "$67.700"
     const val porPagar = "$209.990"
-
-    val movimientos = listOf(
-        MovimientoEjemplo("Supermercado", "Alimentación · 27 oct", "-$124.500"),
-        MovimientoEjemplo("Transporte", "Transporte · 26 oct", "-$18.000"),
-        MovimientoEjemplo("Cuenta de luz", "Servicios · 15 oct", "-$45.200"),
-        MovimientoEjemplo("Freelance", "Ingreso extra · 12 oct", "+$150.000", ingreso = true),
-        MovimientoEjemplo("Arriendo", "Hogar · 05 oct", "-$380.000"),
-        MovimientoEjemplo("Sueldo", "Ingreso fijo · 01 oct", "+$1.100.000", ingreso = true),
-    )
 
     val presupuestoOcio = PresupuestoEjemplo("Ocio", "$142.800", "$120.000", 119, "play", RojoGasto, FondoGasto)
     const val excesoOcio = "$22.800"
