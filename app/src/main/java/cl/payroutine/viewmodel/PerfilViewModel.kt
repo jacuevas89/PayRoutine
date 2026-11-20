@@ -18,7 +18,10 @@ internal data class EstadoPerfil(
     val errorCarga: Boolean = false,
     val guardando: Boolean = false,
     val errorGuardado: Boolean = false,
+    val edicion: EstadoEdicionPerfil = EstadoEdicionPerfil.Disponible,
 )
+
+internal enum class EstadoEdicionPerfil { Disponible, Guardando, Error, Guardada }
 
 internal class PerfilViewModel(aplicacion: Application) : AndroidViewModel(aplicacion) {
     private val repositorio = (aplicacion as PayRoutineApplication).repositorio
@@ -59,6 +62,33 @@ internal class PerfilViewModel(aplicacion: Application) : AndroidViewModel(aplic
                 estadoInterno.update { it.copy(errorGuardado = true) }
             } finally {
                 estadoInterno.update { it.copy(guardando = false) }
+            }
+        }
+    }
+
+    fun prepararEdicion() {
+        estadoInterno.update { actual ->
+            if (actual.edicion == EstadoEdicionPerfil.Guardando) actual
+            else actual.copy(edicion = EstadoEdicionPerfil.Disponible)
+        }
+    }
+
+    fun guardarEdicion(nombreCompleto: String, apodo: String) {
+        val actual = estadoInterno.value
+        val usuario = actual.usuario ?: return
+        if (actual.edicion == EstadoEdicionPerfil.Guardando || actual.edicion == EstadoEdicionPerfil.Guardada) return
+        if (nombreCompleto.isBlank() || apodo.isBlank()) return
+
+        estadoInterno.update { it.copy(edicion = EstadoEdicionPerfil.Guardando) }
+        viewModelScope.launch {
+            val actualizado = try {
+                repositorio.actualizarDatosUsuario(usuario.id, nombreCompleto, apodo) == 1
+            } catch (error: SQLiteException) {
+                Log.e("PerfilViewModel", "Error al actualizar el perfil", error)
+                false
+            }
+            estadoInterno.update {
+                it.copy(edicion = if (actualizado) EstadoEdicionPerfil.Guardada else EstadoEdicionPerfil.Error)
             }
         }
     }

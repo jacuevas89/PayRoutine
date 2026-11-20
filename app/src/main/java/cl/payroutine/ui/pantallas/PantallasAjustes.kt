@@ -16,7 +16,9 @@ import cl.payroutine.ui.theme.*
 @Composable
 internal fun PantallaAjustes(
     apodo: String,
+    nombreCompleto: String,
     volver: () -> Unit,
+    editarPerfil: () -> Unit,
     verCategorias: () -> Unit,
     verRecordatorios: () -> Unit,
     verConsejos: () -> Unit,
@@ -31,7 +33,9 @@ internal fun PantallaAjustes(
                     }
                     Column(Modifier.weight(1f)) {
                         Cifra(apodo, tamano = 17)
+                        Etiqueta(nombreCompleto)
                         Etiqueta("Tus datos se guardan en este teléfono")
+                        Enlace("Editar perfil", editarPerfil)
                     }
                 }
             }
