@@ -70,7 +70,7 @@ internal fun PantallaPresupuestoExcedido(volver: () -> Unit, editar: () -> Unit)
                 FilaTarjeta(gasto.nombre, gasto.detalle, gasto.monto, "up", RojoGasto, FondoGasto, RojoGasto)
             }
         }
-        BotonPrincipal("Ajustar presupuesto", Modifier.padding(horizontal = 16.dp, vertical = 16.dp), editar)
+        BotonPrincipal("Ajustar presupuesto", Modifier.padding(horizontal = 16.dp, vertical = 16.dp), alPulsar = editar)
     }
 }
 

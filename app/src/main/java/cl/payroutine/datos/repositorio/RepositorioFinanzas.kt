@@ -11,9 +11,23 @@ class RepositorioFinanzas(baseDatos: BaseDatosPayRoutine) {
     private val movimientoDao = baseDatos.movimientoDao()
     private val presupuestoDao = baseDatos.presupuestoDao()
     private val pagoPendienteDao = baseDatos.pagoPendienteDao()
+    private val usuarioDao = baseDatos.usuarioDao()
+
+    fun observarUsuario() = usuarioDao.observar()
+
+    suspend fun registrarUsuario(nombreCompleto: String, apodo: String) {
+        require(nombreCompleto.isNotBlank() && apodo.isNotBlank())
+        usuarioDao.registrarSiFalta(nombreCompleto.trim(), apodo.trim())
+    }
+
+    suspend fun actualizarDatosUsuario(id: String, nombreCompleto: String, apodo: String): Int {
+        require(nombreCompleto.isNotBlank() && apodo.isNotBlank())
+        return usuarioDao.actualizarDatos(id, nombreCompleto.trim(), apodo.trim())
+    }
 
     fun observarCategorias() = categoriaDao.observarTodos()
     fun observarMovimientos() = movimientoDao.observarTodos()
+    fun observarMovimientosConCategoria() = movimientoDao.observarConCategoria()
     fun observarPresupuestos() = presupuestoDao.observarTodos()
     fun observarPagos() = pagoPendienteDao.observarTodos()
 
