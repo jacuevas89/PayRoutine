@@ -11,6 +11,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -30,6 +31,7 @@ import cl.payroutine.datos.local.entidad.Usuario
 import cl.payroutine.ui.pantallas.*
 import cl.payroutine.ui.theme.*
 import cl.payroutine.viewmodel.DatosInicio
+import cl.payroutine.viewmodel.EstadoBorrado
 import cl.payroutine.viewmodel.EstadoEdicionPerfil
 import cl.payroutine.viewmodel.EstadoPerfil
 import cl.payroutine.viewmodel.FinanzasViewModel
@@ -41,6 +43,8 @@ private const val EDITAR_PRESUPUESTO = "editar-presupuesto"
 private const val PRESUPUESTO_EXCEDIDO = "presupuesto-excedido"
 private const val AJUSTES = "ajustes"
 private const val EDITAR_PERFIL = "editar-perfil"
+private const val DATOS_Y_PRIVACIDAD = "datos-y-privacidad"
+private const val INFORMACION_PRIVACIDAD = "informacion-privacidad"
 private const val CATEGORIAS = "categorias"
 private const val CONSEJOS_AHORRO = "consejos-ahorro"
 private const val RECORDATORIOS = "recordatorios"
@@ -71,6 +75,8 @@ internal fun PayRoutineApp(perfil: PerfilViewModel, finanzas: FinanzasViewModel)
         reintentarCarga = perfil::reintentarCarga,
         prepararEdicion = perfil::prepararEdicion,
         guardarEdicion = perfil::guardarEdicion,
+        eliminarDatos = perfil::eliminarTodosLosDatos,
+        limpiarErrorBorrado = perfil::limpiarErrorBorrado,
         registrar = perfil::registrar,
     )
 }
@@ -82,6 +88,8 @@ internal fun NavegacionPayRoutine(
     reintentarCarga: () -> Unit,
     prepararEdicion: () -> Unit = {},
     guardarEdicion: (String, String) -> Unit = { _, _ -> },
+    eliminarDatos: () -> Unit = {},
+    limpiarErrorBorrado: () -> Unit = {},
     registrar: (String, String) -> Unit,
 ) {
     val usuario = estado.usuario
@@ -90,7 +98,12 @@ internal fun NavegacionPayRoutine(
         return
     }
 
-    NavegacionPrincipal(usuario, inicio, estado.edicion, prepararEdicion, guardarEdicion)
+    key(usuario.id) {
+        NavegacionPrincipal(
+            usuario, inicio, estado.edicion, estado.borrado,
+            prepararEdicion, guardarEdicion, eliminarDatos, limpiarErrorBorrado,
+        )
+    }
 }
 
 @Composable
@@ -98,13 +111,17 @@ private fun NavegacionPrincipal(
     usuario: Usuario,
     inicio: DatosInicio?,
     edicion: EstadoEdicionPerfil,
+    borrado: EstadoBorrado,
     prepararEdicion: () -> Unit,
     guardarEdicion: (String, String) -> Unit,
+    eliminarDatos: () -> Unit,
+    limpiarErrorBorrado: () -> Unit,
 ) {
     val navegador = rememberNavController()
     val entradaActual = navegador.currentBackStackEntryAsState().value
     val usuarioActual by rememberUpdatedState(usuario)
     val edicionActual by rememberUpdatedState(edicion)
+    val borradoActual by rememberUpdatedState(borrado)
     val datosActuales by rememberUpdatedState(inicio)
     val rutaActual = entradaActual?.destination?.route ?: Seccion.Inicio.ruta
     val seccionActual = Seccion.entries.firstOrNull { it.ruta == rutaActual }
@@ -213,7 +230,20 @@ private fun NavegacionPrincipal(
                         verCategorias = { abrir(origen, CATEGORIAS) },
                         verRecordatorios = { abrir(origen, RECORDATORIOS) },
                         verConsejos = { abrir(origen, CONSEJOS_AHORRO) },
+                        verDatosYPrivacidad = { abrir(origen, DATOS_Y_PRIVACIDAD) },
                     )
+                }
+                composable(DATOS_Y_PRIVACIDAD) { origen ->
+                    PantallaDatosYPrivacidad(
+                        estado = borradoActual,
+                        volver = { volver(origen) },
+                        verInformacion = { abrir(origen, INFORMACION_PRIVACIDAD) },
+                        eliminarDatos = eliminarDatos,
+                        limpiarError = limpiarErrorBorrado,
+                    )
+                }
+                composable(INFORMACION_PRIVACIDAD) { origen ->
+                    PantallaInformacionPrivacidad { volver(origen) }
                 }
                 composable(EDITAR_PERFIL) { origen ->
                     val estadoEdicion = edicionActual

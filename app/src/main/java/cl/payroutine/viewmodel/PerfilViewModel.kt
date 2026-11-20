@@ -1,6 +1,7 @@
 package cl.payroutine.viewmodel
 
 import android.app.Application
+import android.app.NotificationManager
 import android.database.sqlite.SQLiteException
 import android.util.Log
 import androidx.lifecycle.AndroidViewModel
@@ -19,9 +20,11 @@ internal data class EstadoPerfil(
     val guardando: Boolean = false,
     val errorGuardado: Boolean = false,
     val edicion: EstadoEdicionPerfil = EstadoEdicionPerfil.Disponible,
+    val borrado: EstadoBorrado = EstadoBorrado.Disponible,
 )
 
 internal enum class EstadoEdicionPerfil { Disponible, Guardando, Error, Guardada }
+internal enum class EstadoBorrado { Disponible, Eliminando, Error }
 
 internal class PerfilViewModel(aplicacion: Application) : AndroidViewModel(aplicacion) {
     private val repositorio = (aplicacion as PayRoutineApplication).repositorio
@@ -41,7 +44,10 @@ internal class PerfilViewModel(aplicacion: Application) : AndroidViewModel(aplic
         viewModelScope.launch {
             try {
                 repositorio.observarUsuario().collect { usuario ->
-                    estadoInterno.update { it.copy(cargando = false, usuario = usuario) }
+                    estadoInterno.update {
+                        if (it.borrado == EstadoBorrado.Eliminando) it
+                        else it.copy(cargando = false, usuario = usuario)
+                    }
                 }
             } catch (error: SQLiteException) {
                 Log.e("PerfilViewModel", "Error al leer el perfil", error)
@@ -91,5 +97,36 @@ internal class PerfilViewModel(aplicacion: Application) : AndroidViewModel(aplic
                 it.copy(edicion = if (actualizado) EstadoEdicionPerfil.Guardada else EstadoEdicionPerfil.Error)
             }
         }
+    }
+
+    fun limpiarErrorBorrado() {
+        estadoInterno.update {
+            if (it.borrado == EstadoBorrado.Error) it.copy(borrado = EstadoBorrado.Disponible) else it
+        }
+    }
+
+    fun eliminarTodosLosDatos() {
+        val actual = estadoInterno.value
+        if (actual.usuario == null || actual.borrado == EstadoBorrado.Eliminando ||
+            actual.edicion == EstadoEdicionPerfil.Guardando
+        ) return
+
+        estadoInterno.update { it.copy(borrado = EstadoBorrado.Eliminando) }
+        viewModelScope.launch {
+            try {
+                getApplication<PayRoutineApplication>().getSystemService(NotificationManager::class.java)?.cancelAll()
+                repositorio.eliminarTodosLosDatos()
+                estadoInterno.value = EstadoPerfil(cargando = false)
+            } catch (error: SQLiteException) {
+                informarErrorBorrado(error)
+            } catch (error: SecurityException) {
+                informarErrorBorrado(error)
+            }
+        }
+    }
+
+    private fun informarErrorBorrado(error: Exception) {
+        Log.e("PerfilViewModel", "Error al eliminar los datos locales", error)
+        estadoInterno.update { it.copy(borrado = EstadoBorrado.Error) }
     }
 }
