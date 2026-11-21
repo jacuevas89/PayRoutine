@@ -31,6 +31,8 @@ import cl.payroutine.datos.local.entidad.Usuario
 import cl.payroutine.ui.pantallas.*
 import cl.payroutine.ui.theme.*
 import cl.payroutine.viewmodel.DatosInicio
+import cl.payroutine.viewmodel.CategoriasViewModel
+import cl.payroutine.viewmodel.EstadoCategorias
 import cl.payroutine.viewmodel.EstadoBorrado
 import cl.payroutine.viewmodel.EstadoEdicionPerfil
 import cl.payroutine.viewmodel.EstadoPerfil
@@ -62,8 +64,9 @@ private enum class Seccion(val ruta: String, val titulo: String, val icono: Stri
 }
 
 @Composable
-internal fun PayRoutineApp(perfil: PerfilViewModel, finanzas: FinanzasViewModel) {
+internal fun PayRoutineApp(perfil: PerfilViewModel, finanzas: FinanzasViewModel, categorias: CategoriasViewModel) {
     val estado by perfil.estado.collectAsState()
+    val estadoCategorias by categorias.estado.collectAsState()
     val inicio = if (estado.usuario != null && !estado.errorCarga) {
         finanzas.inicio.collectAsState().value
     } else {
@@ -73,6 +76,8 @@ internal fun PayRoutineApp(perfil: PerfilViewModel, finanzas: FinanzasViewModel)
         estado = estado,
         inicio = inicio,
         reintentarCarga = perfil::reintentarCarga,
+        categorias = estadoCategorias,
+        reintentarCategorias = categorias::reintentarCarga,
         prepararEdicion = perfil::prepararEdicion,
         guardarEdicion = perfil::guardarEdicion,
         eliminarDatos = perfil::eliminarTodosLosDatos,
@@ -86,6 +91,8 @@ internal fun NavegacionPayRoutine(
     estado: EstadoPerfil,
     inicio: DatosInicio?,
     reintentarCarga: () -> Unit,
+    categorias: EstadoCategorias = EstadoCategorias(),
+    reintentarCategorias: () -> Unit = {},
     prepararEdicion: () -> Unit = {},
     guardarEdicion: (String, String) -> Unit = { _, _ -> },
     eliminarDatos: () -> Unit = {},
@@ -102,6 +109,7 @@ internal fun NavegacionPayRoutine(
         NavegacionPrincipal(
             usuario, inicio, estado.edicion, estado.borrado,
             prepararEdicion, guardarEdicion, eliminarDatos, limpiarErrorBorrado,
+            categorias, reintentarCategorias,
         )
     }
 }
@@ -116,6 +124,8 @@ private fun NavegacionPrincipal(
     guardarEdicion: (String, String) -> Unit,
     eliminarDatos: () -> Unit,
     limpiarErrorBorrado: () -> Unit,
+    categorias: EstadoCategorias,
+    reintentarCategorias: () -> Unit,
 ) {
     val navegador = rememberNavController()
     val entradaActual = navegador.currentBackStackEntryAsState().value
@@ -123,6 +133,7 @@ private fun NavegacionPrincipal(
     val edicionActual by rememberUpdatedState(edicion)
     val borradoActual by rememberUpdatedState(borrado)
     val datosActuales by rememberUpdatedState(inicio)
+    val categoriasActuales by rememberUpdatedState(categorias)
     val rutaActual = entradaActual?.destination?.route ?: Seccion.Inicio.ruta
     val seccionActual = Seccion.entries.firstOrNull { it.ruta == rutaActual }
     val fondoSuperior = if (seccionActual == Seccion.Inicio) AzulNoche else Color.White
@@ -210,7 +221,9 @@ private fun NavegacionPrincipal(
                     )
                 }
                 composable(Seccion.Resumen.ruta) { PantallaResumen() }
-                composable(NUEVO_MOVIMIENTO) { origen -> PantallaNuevoMovimiento { volver(origen) } }
+                composable(NUEVO_MOVIMIENTO) { origen ->
+                    PantallaNuevoMovimiento(categoriasActuales, reintentarCategorias) { volver(origen) }
+                }
                 composable(NUEVO_PAGO) { origen -> PantallaNuevoPago { volver(origen) } }
                 composable(PRESUPUESTO_EXCEDIDO) { origen ->
                     PantallaPresupuestoExcedido(volver = { volver(origen) }, editar = { abrir(origen, EDITAR_PRESUPUESTO) })
@@ -264,7 +277,9 @@ private fun NavegacionPrincipal(
                         guardar = guardarEdicion,
                     )
                 }
-                composable(CATEGORIAS) { origen -> PantallaCategorias { volver(origen) } }
+                composable(CATEGORIAS) { origen ->
+                    PantallaCategorias(categoriasActuales, reintentarCategorias) { volver(origen) }
+                }
                 composable(CONSEJOS_AHORRO) { origen -> PantallaConsejosAhorro { volver(origen) } }
                 composable(RECORDATORIOS) { origen -> PantallaRecordatorios { volver(origen) } }
                 composable(CALENDARIO) { origen -> PantallaCalendario { volver(origen) } }

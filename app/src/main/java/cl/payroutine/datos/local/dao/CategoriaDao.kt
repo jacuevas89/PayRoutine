@@ -2,24 +2,55 @@ package cl.payroutine.datos.local.dao
 
 import androidx.room.Dao
 import androidx.room.Delete
+import androidx.room.Embedded
 import androidx.room.Insert
 import androidx.room.Query
+import androidx.room.Transaction
 import androidx.room.Update
-import cl.payroutine.datos.local.INSERTAR_CATEGORIA_PREDEFINIDA
+import cl.payroutine.datos.local.categoriasPredefinidas
 import cl.payroutine.datos.local.entidad.Categoria
-import cl.payroutine.datos.local.entidad.TipoMovimiento
+import cl.payroutine.datos.local.normalizarNombreCategoria
 import kotlinx.coroutines.flow.Flow
+
+data class CategoriaConUso(
+    @Embedded val categoria: Categoria,
+    val cantidadMovimientos: Int,
+)
 
 @Dao
 interface CategoriaDao {
     @Query("DELETE FROM Categoria WHERE es_predefinida = 0")
     suspend fun eliminarPersonalizadas()
 
-    @Query(INSERTAR_CATEGORIA_PREDEFINIDA)
-    suspend fun insertarPredefinidaSiFalta(nombre: String, tipo: TipoMovimiento)
-
     @Query("SELECT * FROM Categoria ORDER BY nombre, id")
     fun observarTodos(): Flow<List<Categoria>>
+
+    @Query("""
+        SELECT Categoria.*, COUNT(Movimiento.id) AS cantidadMovimientos
+        FROM Categoria LEFT JOIN Movimiento ON Movimiento.categoria_id = Categoria.id
+        GROUP BY Categoria.id
+        ORDER BY Categoria.nombre, Categoria.id
+    """)
+    fun observarConUso(): Flow<List<CategoriaConUso>>
+
+    @Query("SELECT * FROM Categoria")
+    suspend fun obtenerTodos(): List<Categoria>
+
+    @Insert
+    suspend fun insertarTodas(entidades: List<Categoria>)
+
+    @Transaction
+    suspend fun prepararIniciales() {
+        val existentes = obtenerTodos().filter { it.esPredefinida }.map {
+            it.tipo to normalizarNombreCategoria(it.nombre)
+        }.toSet()
+        val iniciales = categoriasPredefinidas.flatMap { (tipo, nombres) ->
+            nombres.map { Categoria(nombre = it, tipo = tipo, esPredefinida = true) }
+        }
+        insertarTodas(iniciales.filter {
+            (it.tipo to normalizarNombreCategoria(it.nombre)) !in existentes
+        })
+    }
 
     @Insert
     suspend fun insertar(entidad: Categoria): Long

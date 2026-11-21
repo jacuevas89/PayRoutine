@@ -3,11 +3,19 @@ package cl.payroutine.datos.local
 import androidx.room.migration.AutoMigrationSpec
 import androidx.sqlite.db.SupportSQLiteDatabase
 import cl.payroutine.datos.local.entidad.TipoMovimiento
+import java.util.Locale
 
 internal val categoriasPredefinidas = mapOf(
-    TipoMovimiento.Gasto to listOf("Alimentación", "Transporte", "Hogar", "Servicios", "Ocio", "Salud", "Otros"),
-    TipoMovimiento.Ingreso to listOf("Sueldo", "Freelance"),
+    TipoMovimiento.Gasto to listOf(
+        "Alimentación", "Transporte", "Hogar", "Servicios", "Ocio", "Salud", "Otros",
+        "Educación", "Vestuario", "Mascotas",
+    ),
+    TipoMovimiento.Ingreso to listOf("Sueldo", "Freelance", "Ventas", "Arriendos", "Pensiones", "Otros ingresos"),
 )
+
+// Se compara sin modificar el nombre ni el identificador de los registros existentes.
+internal fun normalizarNombreCategoria(nombre: String): String =
+    nombre.trim().replace(Regex("\\s+"), " ").lowercase(Locale.ROOT)
 
 internal const val INSERTAR_CATEGORIA_PREDEFINIDA = """
     INSERT INTO Categoria (nombre, tipo, es_predefinida)

@@ -1,11 +1,8 @@
 package cl.payroutine.ui.pantallas
 
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -49,37 +46,6 @@ internal fun PantallaAjustes(
             FilaAjustes("Tema", "moon", AzulNoche, FondoSelector, "Claro")
             FilaAjustes("Datos y privacidad", "list", AzulNoche, FondoSelector, alPulsar = verDatosYPrivacidad)
             Etiqueta("PayRoutine · Versión 1.0 (prototipo)")
-        }
-    }
-}
-
-@Composable
-internal fun PantallaCategorias(volver: () -> Unit) {
-    val gastos = DatosDeEjemplo.formularioGasto.categorias
-    Column(Modifier.fillMaxSize()) {
-        Cabecera("Categorías", volver, accion = "Nueva")
-        Cuerpo(Modifier.weight(1f), espacio = 10) {
-            Segmentos(listOf("Gastos", "Ingresos"), activa = 0)
-            FilaAjustes(gastos[0], "cart", VerdeMarca, FondoMarca, "12 mov.")
-            FilaAjustes(gastos[1], "bus", AzulNoche, FondoSelector, "9 mov.")
-            FilaAjustes(gastos[2], "house", NaranjaAlerta, FondoAlerta, "3 mov.")
-            FilaAjustes(gastos[3], "bolt", VerdeMarca, FondoMarca, "4 mov.")
-            FilaAjustes(gastos[4], "play", RojoGasto, FondoGasto, "6 mov.")
-            FilaAjustes(gastos[5], "heart", AzulNoche, FondoSelector, "1 mov.")
-            Surface(
-                modifier = Modifier.fillMaxWidth().height(48.dp),
-                shape = RoundedCornerShape(14.dp),
-                color = Color.White,
-                border = BorderStroke(1.dp, VerdeMarca),
-            ) {
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Icono("plus", VerdeMarca, Modifier.size(16.dp))
-                    Destacado("Nueva categoría", VerdeMarca)
-                }
-            }
         }
     }
 }

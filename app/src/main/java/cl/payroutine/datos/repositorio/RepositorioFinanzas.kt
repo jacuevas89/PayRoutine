@@ -2,7 +2,6 @@ package cl.payroutine.datos.repositorio
 
 import androidx.room.withTransaction
 import cl.payroutine.datos.local.BaseDatosPayRoutine
-import cl.payroutine.datos.local.categoriasPredefinidas
 import cl.payroutine.datos.local.entidad.Categoria
 import cl.payroutine.datos.local.entidad.Movimiento
 import cl.payroutine.datos.local.entidad.PagoPendiente
@@ -31,6 +30,8 @@ class RepositorioFinanzas(private val baseDatos: BaseDatosPayRoutine) {
     }
 
     fun observarCategorias() = categoriaDao.observarTodos()
+    fun observarCategoriasConUso() = categoriaDao.observarConUso()
+    suspend fun prepararCategoriasIniciales() = categoriaDao.prepararIniciales()
     fun observarMovimientos() = movimientoDao.observarTodos()
     fun observarMovimientosConCategoria() = movimientoDao.observarConCategoria()
     fun observarPresupuestos() = presupuestoDao.observarTodos()
@@ -46,9 +47,7 @@ class RepositorioFinanzas(private val baseDatos: BaseDatosPayRoutine) {
     }
 
     private suspend fun cargarCategoriasPredefinidas() {
-        for ((tipo, nombres) in categoriasPredefinidas) {
-            for (nombre in nombres) categoriaDao.insertarPredefinidaSiFalta(nombre, tipo)
-        }
+        categoriaDao.prepararIniciales()
     }
 
     suspend fun insertar(categoria: Categoria) = categoriaDao.insertar(categoria)
