@@ -25,11 +25,14 @@ class RegistroUsuarioTest {
     fun migracionConservaDatosYRegistroConservaUnSoloUuid() = runBlocking {
         val nombreBase = "rf19-${UUID.randomUUID()}.db"
         try {
-            crearBaseVersionUno(nombreBase)
+            crearBaseAnterior(nombreBase, version = 1)
             val id = conBase(nombreBase) { base ->
                 val repositorio = RepositorioFinanzas(base)
                 assertNull(repositorio.observarUsuario().first())
-                assertEquals("Alimentación", repositorio.observarCategorias().first().single().nombre)
+                val categorias = repositorio.observarCategorias().first()
+                assertEquals("Alimentación", categorias.single { it.id == 1 }.nombre)
+                assertFalse(categorias.single { it.id == 1 }.esPredefinida)
+                assertEquals(9, categorias.count { it.esPredefinida })
                 assertEquals("Compra", repositorio.observarMovimientos().first().single().nota)
                 assertEquals(40000.0, repositorio.observarPresupuestos().first().single().montoPresupuestado, 0.0)
                 assertEquals("Internet", repositorio.observarPagos().first().single().descripcion)
@@ -66,6 +69,29 @@ class RegistroUsuarioTest {
         Unit
     }
 
+    @Test
+    fun migracionDesdeVersionDosAgregaCatalogoYConservaCategoriasYPerfil() = runBlocking {
+        val nombreBase = "categorias-rf21-${UUID.randomUUID()}.db"
+        val idUsuario = UUID.randomUUID().toString()
+        try {
+            crearBaseAnterior(nombreBase, version = 2, idUsuario = idUsuario)
+            conBase(nombreBase) { base ->
+                val repositorio = RepositorioFinanzas(base)
+                val categorias = repositorio.observarCategorias().first()
+                assertEquals(idUsuario, repositorio.observarUsuario().first()?.id)
+                assertEquals(1, repositorio.observarMovimientos().first().single().categoriaId)
+                assertEquals(1, repositorio.observarPresupuestos().first().single().categoriaId)
+                assertEquals(10, categorias.size)
+                assertFalse(categorias.single { it.id == 1 }.esPredefinida)
+                assertEquals(9, categorias.count { it.esPredefinida })
+                assertEquals(2, categorias.count { it.nombre == "Alimentación" })
+            }
+        } finally {
+            contexto.deleteDatabase(nombreBase)
+        }
+        Unit
+    }
+
     private inline fun <T> conBase(nombre: String, usar: (BaseDatosPayRoutine) -> T): T {
         val base = Room.databaseBuilder(contexto, BaseDatosPayRoutine::class.java, nombre).build()
         try {
@@ -75,9 +101,9 @@ class RegistroUsuarioTest {
         }
     }
 
-    private fun crearBaseVersionUno(nombre: String) {
+    private fun crearBaseAnterior(nombre: String, version: Int, idUsuario: String? = null) {
         val esquema = instrumentacion.context.assets.open(
-            "${BaseDatosPayRoutine::class.java.name}/1.json",
+            "${BaseDatosPayRoutine::class.java.name}/$version.json",
         ).bufferedReader().use { JSONObject(it.readText()).getJSONObject("database") }
         val archivo = contexto.getDatabasePath(nombre)
         archivo.parentFile?.mkdirs()
@@ -98,7 +124,13 @@ class RegistroUsuarioTest {
             base.execSQL("INSERT INTO Movimiento VALUES (1, 'Gasto', 5000, 0, 1, 'Compra')")
             base.execSQL("INSERT INTO Presupuesto VALUES (1, 1, 40000, 11, 2026)")
             base.execSQL("INSERT INTO PagoPendiente VALUES (1, 'Internet', 20000, 0, 0, NULL, NULL, 0)")
-            base.version = 1
+            if (idUsuario != null) {
+                base.execSQL(
+                    "INSERT INTO Usuario (id, nombre_completo, apodo) VALUES (?, ?, ?)",
+                    arrayOf(idUsuario, "María Pérez", "Mari"),
+                )
+            }
+            base.version = version
         }
     }
 }

@@ -16,6 +16,9 @@ data class MovimientoConCategoria(
 
 @Dao
 interface MovimientoDao {
+    @Query("DELETE FROM Movimiento")
+    suspend fun eliminarTodos()
+
     @Query("SELECT * FROM Movimiento ORDER BY fecha DESC, id DESC")
     fun observarTodos(): Flow<List<Movimiento>>
 
