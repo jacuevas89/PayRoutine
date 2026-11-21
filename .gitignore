@@ -14,3 +14,4 @@ local.properties
 *.keystore
 *.apk
 *.aab
+/.contexto_codex/
