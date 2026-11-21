@@ -10,6 +10,9 @@ import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface UsuarioDao {
+    @Query("DELETE FROM Usuario")
+    suspend fun eliminarTodos()
+
     @Query("SELECT * FROM Usuario LIMIT 1")
     fun observar(): Flow<Usuario?>
 

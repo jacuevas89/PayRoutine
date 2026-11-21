@@ -2,11 +2,14 @@ package cl.payroutine.ui.pantallas
 
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.unit.dp
@@ -21,12 +24,43 @@ internal fun PantallaRegistroUsuario(
     volver: () -> Unit,
     registrar: (String, String) -> Unit,
 ) {
-    var nombreCompleto by rememberSaveable { mutableStateOf("") }
-    var apodo by rememberSaveable { mutableStateOf("") }
+    FormularioPerfil(
+        titulo = "Tu perfil",
+        accionGuardar = "Guardar y continuar",
+        guardando = guardando,
+        errorGuardado = errorGuardado,
+        volver = volver,
+        guardar = registrar,
+    )
+}
+
+@Composable
+internal fun FormularioPerfil(
+    titulo: String,
+    accionGuardar: String,
+    guardando: Boolean,
+    errorGuardado: Boolean,
+    volver: () -> Unit,
+    nombreInicial: String = "",
+    apodoInicial: String = "",
+    mostrarCancelar: Boolean = false,
+    guardar: (String, String) -> Unit,
+) {
+    var nombreCompleto by rememberSaveable { mutableStateOf(nombreInicial) }
+    var apodo by rememberSaveable { mutableStateOf(apodoInicial) }
     var intentoGuardar by rememberSaveable { mutableStateOf(false) }
+    val foco = LocalFocusManager.current
+    val teclado = LocalSoftwareKeyboardController.current
+
+    fun volverDelFormulario() {
+        if (guardando) return
+        foco.clearFocus()
+        teclado?.hide()
+        volver()
+    }
 
     Column(Modifier.fillMaxSize().imePadding()) {
-        Cabecera("Tu perfil", volver)
+        Cabecera(titulo, ::volverDelFormulario)
         Cuerpo(Modifier.weight(1f)) {
             Tarjeta(Modifier.fillMaxWidth(), espacio = 12) {
                 Text(
@@ -44,11 +78,22 @@ internal fun PantallaRegistroUsuario(
             }
             if (errorGuardado) Etiqueta("No se pudo guardar tu perfil. Vuelve a intentarlo.", RojoGasto)
             BotonPrincipal(
-                if (guardando) "Guardando…" else "Guardar y continuar",
+                if (guardando) "Guardando…" else accionGuardar,
                 habilitado = !guardando,
             ) {
                 intentoGuardar = true
-                if (nombreCompleto.isNotBlank() && apodo.isNotBlank()) registrar(nombreCompleto, apodo)
+                if (nombreCompleto.isNotBlank() && apodo.isNotBlank()) {
+                    foco.clearFocus()
+                    teclado?.hide()
+                    guardar(nombreCompleto, apodo)
+                }
+            }
+            if (mostrarCancelar) {
+                OutlinedButton(
+                    onClick = ::volverDelFormulario,
+                    modifier = Modifier.fillMaxWidth().heightIn(min = 46.dp),
+                    enabled = !guardando,
+                ) { Text("Cancelar") }
             }
         }
     }
