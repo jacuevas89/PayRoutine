@@ -1,5 +1,6 @@
 package cl.payroutine.ui.navegacion
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.selection.selectable
@@ -7,8 +8,10 @@ import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -24,11 +27,14 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import cl.payroutine.datos.local.entidad.Usuario
 import cl.payroutine.ui.pantallas.*
 import cl.payroutine.ui.theme.*
 import cl.payroutine.viewmodel.DatosInicio
 import cl.payroutine.viewmodel.CategoriasViewModel
 import cl.payroutine.viewmodel.EstadoCategorias
+import cl.payroutine.viewmodel.EstadoBorrado
+import cl.payroutine.viewmodel.EstadoEdicionPerfil
 import cl.payroutine.viewmodel.EstadoPerfil
 import cl.payroutine.viewmodel.FinanzasViewModel
 import cl.payroutine.viewmodel.PerfilViewModel
@@ -38,6 +44,9 @@ private const val NUEVO_PAGO = "nuevo-pago"
 private const val EDITAR_PRESUPUESTO = "editar-presupuesto"
 private const val PRESUPUESTO_EXCEDIDO = "presupuesto-excedido"
 private const val AJUSTES = "ajustes"
+private const val EDITAR_PERFIL = "editar-perfil"
+private const val DATOS_Y_PRIVACIDAD = "datos-y-privacidad"
+private const val INFORMACION_PRIVACIDAD = "informacion-privacidad"
 private const val CATEGORIAS = "categorias"
 private const val CONSEJOS_AHORRO = "consejos-ahorro"
 private const val RECORDATORIOS = "recordatorios"
@@ -64,9 +73,15 @@ internal fun PayRoutineApp(perfil: PerfilViewModel, finanzas: FinanzasViewModel,
         null
     }
     NavegacionPayRoutine(
-        estado, inicio, perfil::reintentarCarga,
+        estado = estado,
+        inicio = inicio,
+        reintentarCarga = perfil::reintentarCarga,
         categorias = estadoCategorias,
         reintentarCategorias = categorias::reintentarCarga,
+        prepararEdicion = perfil::prepararEdicion,
+        guardarEdicion = perfil::guardarEdicion,
+        eliminarDatos = perfil::eliminarTodosLosDatos,
+        limpiarErrorBorrado = perfil::limpiarErrorBorrado,
         registrar = perfil::registrar,
     )
 }
@@ -78,6 +93,10 @@ internal fun NavegacionPayRoutine(
     reintentarCarga: () -> Unit,
     categorias: EstadoCategorias = EstadoCategorias(),
     reintentarCategorias: () -> Unit = {},
+    prepararEdicion: () -> Unit = {},
+    guardarEdicion: (String, String) -> Unit = { _, _ -> },
+    eliminarDatos: () -> Unit = {},
+    limpiarErrorBorrado: () -> Unit = {},
     registrar: (String, String) -> Unit,
 ) {
     val usuario = estado.usuario
@@ -86,19 +105,33 @@ internal fun NavegacionPayRoutine(
         return
     }
 
-    NavegacionPrincipal(usuario.apodo, inicio, categorias, reintentarCategorias)
+    key(usuario.id) {
+        NavegacionPrincipal(
+            usuario, inicio, estado.edicion, estado.borrado,
+            prepararEdicion, guardarEdicion, eliminarDatos, limpiarErrorBorrado,
+            categorias, reintentarCategorias,
+        )
+    }
 }
 
 @Composable
 private fun NavegacionPrincipal(
-    apodo: String,
+    usuario: Usuario,
     inicio: DatosInicio?,
+    edicion: EstadoEdicionPerfil,
+    borrado: EstadoBorrado,
+    prepararEdicion: () -> Unit,
+    guardarEdicion: (String, String) -> Unit,
+    eliminarDatos: () -> Unit,
+    limpiarErrorBorrado: () -> Unit,
     categorias: EstadoCategorias,
     reintentarCategorias: () -> Unit,
 ) {
     val navegador = rememberNavController()
     val entradaActual = navegador.currentBackStackEntryAsState().value
-    val apodoActual by rememberUpdatedState(apodo)
+    val usuarioActual by rememberUpdatedState(usuario)
+    val edicionActual by rememberUpdatedState(edicion)
+    val borradoActual by rememberUpdatedState(borrado)
     val datosActuales by rememberUpdatedState(inicio)
     val categoriasActuales by rememberUpdatedState(categorias)
     val rutaActual = entradaActual?.destination?.route ?: Seccion.Inicio.ruta
@@ -158,11 +191,11 @@ private fun NavegacionPrincipal(
             NavHost(
                 navController = navegador,
                 startDestination = Seccion.Inicio.ruta,
-                modifier = Modifier.fillMaxSize().padding(espacioInterior),
+                modifier = Modifier.fillMaxSize().padding(espacioInterior).consumeWindowInsets(espacioInterior),
             ) {
                 composable(Seccion.Inicio.ruta) { origen ->
                     PantallaInicio(
-                        apodo = apodoActual,
+                        apodo = usuarioActual.apodo,
                         datos = datosActuales,
                         verMovimientos = { irA(origen, Seccion.Movimientos) },
                         verPagos = { irA(origen, Seccion.Pagos) },
@@ -198,11 +231,50 @@ private fun NavegacionPrincipal(
                 composable(EDITAR_PRESUPUESTO) { origen -> PantallaEditarPresupuesto { volver(origen) } }
                 composable(AJUSTES) { origen ->
                     PantallaAjustes(
-                        apodo = apodoActual,
+                        apodo = usuarioActual.apodo,
+                        nombreCompleto = usuarioActual.nombreCompleto,
                         volver = { volver(origen) },
+                        editarPerfil = {
+                            if (navegador.currentBackStackEntry === origen) {
+                                prepararEdicion()
+                                abrir(origen, EDITAR_PERFIL)
+                            }
+                        },
                         verCategorias = { abrir(origen, CATEGORIAS) },
                         verRecordatorios = { abrir(origen, RECORDATORIOS) },
                         verConsejos = { abrir(origen, CONSEJOS_AHORRO) },
+                        verDatosYPrivacidad = { abrir(origen, DATOS_Y_PRIVACIDAD) },
+                    )
+                }
+                composable(DATOS_Y_PRIVACIDAD) { origen ->
+                    PantallaDatosYPrivacidad(
+                        estado = borradoActual,
+                        volver = { volver(origen) },
+                        verInformacion = { abrir(origen, INFORMACION_PRIVACIDAD) },
+                        eliminarDatos = eliminarDatos,
+                        limpiarError = limpiarErrorBorrado,
+                    )
+                }
+                composable(INFORMACION_PRIVACIDAD) { origen ->
+                    PantallaInformacionPrivacidad { volver(origen) }
+                }
+                composable(EDITAR_PERFIL) { origen ->
+                    val estadoEdicion = edicionActual
+                    val guardando = estadoEdicion == EstadoEdicionPerfil.Guardando
+                    BackHandler(enabled = guardando) {}
+                    LaunchedEffect(estadoEdicion) {
+                        if (estadoEdicion == EstadoEdicionPerfil.Guardada) volver(origen)
+                    }
+                    FormularioPerfil(
+                        titulo = "Editar perfil",
+                        accionGuardar = "Guardar cambios",
+                        guardando = guardando,
+                        errorGuardado = estadoEdicion == EstadoEdicionPerfil.Error,
+                        volver = { if (!guardando) volver(origen) },
+                        nombreInicial = usuarioActual.nombreCompleto,
+                        apodoInicial = usuarioActual.apodo,
+                        mostrarCancelar = true,
+                        guardar = guardarEdicion,
                     )
                 }
                 composable(CATEGORIAS) { origen ->

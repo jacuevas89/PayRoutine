@@ -7,7 +7,7 @@ import androidx.room.Insert
 import androidx.room.Query
 import androidx.room.Transaction
 import androidx.room.Update
-import cl.payroutine.datos.local.categoriasIniciales
+import cl.payroutine.datos.local.categoriasPredefinidas
 import cl.payroutine.datos.local.entidad.Categoria
 import cl.payroutine.datos.local.normalizarNombreCategoria
 import kotlinx.coroutines.flow.Flow
@@ -19,6 +19,9 @@ data class CategoriaConUso(
 
 @Dao
 interface CategoriaDao {
+    @Query("DELETE FROM Categoria WHERE es_predefinida = 0")
+    suspend fun eliminarPersonalizadas()
+
     @Query("SELECT * FROM Categoria ORDER BY nombre, id")
     fun observarTodos(): Flow<List<Categoria>>
 
@@ -38,10 +41,13 @@ interface CategoriaDao {
 
     @Transaction
     suspend fun prepararIniciales() {
-        val existentes = obtenerTodos().map {
+        val existentes = obtenerTodos().filter { it.esPredefinida }.map {
             it.tipo to normalizarNombreCategoria(it.nombre)
         }.toSet()
-        insertarTodas(categoriasIniciales.filter {
+        val iniciales = categoriasPredefinidas.flatMap { (tipo, nombres) ->
+            nombres.map { Categoria(nombre = it, tipo = tipo, esPredefinida = true) }
+        }
+        insertarTodas(iniciales.filter {
             (it.tipo to normalizarNombreCategoria(it.nombre)) !in existentes
         })
     }

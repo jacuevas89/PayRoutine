@@ -34,6 +34,7 @@ class CategoriasRoomTest {
             List(4) { async(Dispatchers.IO) { repositorio.prepararCategoriasIniciales() } }.awaitAll()
             val categorias = repositorio.observarCategorias().first()
             assertEquals(16, categorias.size)
+            assertTrue(categorias.all { it.esPredefinida })
             assertEquals(
                 setOf("Alimentación", "Transporte", "Hogar", "Servicios", "Ocio", "Salud", "Otros", "Educación", "Vestuario", "Mascotas"),
                 categorias.filter { it.tipo == TipoMovimiento.Gasto }.map { it.nombre }.toSet(),
@@ -49,7 +50,7 @@ class CategoriasRoomTest {
             val reabierto = RepositorioFinanzas(base)
             reabierto.prepararCategoriasIniciales()
             assertEquals(categorias, reabierto.observarCategorias().first())
-            assertEquals(2, base.openHelper.readableDatabase.version)
+            assertEquals(3, base.openHelper.readableDatabase.version)
         } finally {
             base.close()
             contexto.deleteDatabase(nombreBase)
@@ -58,11 +59,38 @@ class CategoriasRoomTest {
     }
 
     @Test
+    fun completaCatalogoDeVersionTresSinCambiarLosIdsPredefinidos() = runBlocking {
+        val base = Room.inMemoryDatabaseBuilder(contexto, BaseDatosPayRoutine::class.java).build()
+        val repositorio = RepositorioFinanzas(base)
+        try {
+            val catalogoAnterior = mapOf(
+                TipoMovimiento.Gasto to listOf("Alimentación", "Transporte", "Hogar", "Servicios", "Ocio", "Salud", "Otros"),
+                TipoMovimiento.Ingreso to listOf("Sueldo", "Freelance"),
+            )
+            for ((tipo, nombres) in catalogoAnterior) {
+                for (nombre in nombres) repositorio.insertar(Categoria(nombre = nombre, tipo = tipo, esPredefinida = true))
+            }
+            val anteriores = repositorio.observarCategorias().first()
+            assertEquals(9, anteriores.size)
+
+            repositorio.prepararCategoriasIniciales()
+            val completas = repositorio.observarCategorias().first()
+            assertEquals(16, completas.size)
+            assertTrue(completas.containsAll(anteriores))
+            assertTrue(completas.all { it.esPredefinida })
+            repositorio.eliminarTodosLosDatos()
+            assertEquals(completas, repositorio.observarCategorias().first())
+        } finally {
+            base.close()
+        }
+    }
+
+    @Test
     fun completaCatalogoConservandoNombresIdsRelacionesYPerfilExistentes() = runBlocking {
         val base = Room.inMemoryDatabaseBuilder(contexto, BaseDatosPayRoutine::class.java).build()
         val repositorio = RepositorioFinanzas(base)
         try {
-            val alimentacion = Categoria(42, " ALIMENTACIÓN ", TipoMovimiento.Gasto)
+            val alimentacion = Categoria(42, " ALIMENTACIÓN ", TipoMovimiento.Gasto, esPredefinida = true)
             val personalizada = Categoria(91, "Viajes", TipoMovimiento.Gasto)
             val ingresoConMismoNombre = Categoria(92, "Hogar", TipoMovimiento.Ingreso)
             listOf(alimentacion, personalizada, ingresoConMismoNombre).forEach { repositorio.insertar(it) }

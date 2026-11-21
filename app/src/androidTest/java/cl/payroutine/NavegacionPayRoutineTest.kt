@@ -15,6 +15,8 @@ import cl.payroutine.ui.navegacion.NavegacionPayRoutine
 import cl.payroutine.ui.pantallas.montoEnPantalla
 import cl.payroutine.ui.theme.PayRoutineTheme
 import cl.payroutine.viewmodel.EstadoPerfil
+import cl.payroutine.viewmodel.EstadoEdicionPerfil
+import cl.payroutine.viewmodel.EstadoBorrado
 import cl.payroutine.viewmodel.FechaLocal
 import cl.payroutine.viewmodel.calcularInicio
 import java.time.LocalDate
@@ -54,6 +56,119 @@ class NavegacionPayRoutineTest {
         tocar("Guardar y continuar")
         ver("Hola, Mari")
         compose.onNodeWithText("Comenzar").assertDoesNotExist()
+    }
+
+    @Test
+    fun editarPerfilPrecargaValidaCancelaYActualizaAjustesEInicio() {
+        val estado = mutableStateOf(EstadoPerfil(cargando = false, usuario = usuario))
+        compose.setContent {
+            PayRoutineTheme {
+                NavegacionPayRoutine(
+                    estado = estado.value,
+                    inicio = inicio,
+                    reintentarCarga = {},
+                    prepararEdicion = { estado.value = estado.value.copy(edicion = EstadoEdicionPerfil.Disponible) },
+                    guardarEdicion = { nombre, apodo ->
+                        val actual = estado.value
+                        estado.value = actual.copy(
+                            usuario = requireNotNull(actual.usuario).copy(nombreCompleto = nombre.trim(), apodo = apodo.trim()),
+                            edicion = EstadoEdicionPerfil.Guardada,
+                        )
+                    },
+                    registrar = { _, _ -> },
+                )
+            }
+        }
+        compose.onNodeWithContentDescription("Ajustes").performClick()
+        ver(usuario.nombreCompleto)
+        tocar("Editar perfil")
+        val campos = compose.onAllNodes(hasSetTextAction())
+        campos[0].assertTextContains(usuario.nombreCompleto)
+        campos[1].assertTextContains(usuario.apodo)
+        campos[0].performTextReplacement("   ")
+        campos[1].performTextReplacement("   ")
+        tocar("Guardar cambios")
+        compose.onAllNodesWithText("Este campo es obligatorio").assertCountEquals(2)
+        campos[1].performTextReplacement("Cancelado")
+        tocar("Cancelar")
+        esperarAjustes()
+        ver(usuario.apodo)
+        ver(usuario.nombreCompleto)
+
+        tocar("Editar perfil")
+        campos[0].performTextReplacement("Sin guardar")
+        atrasAndroid()
+        esperarAjustes()
+        ver(usuario.nombreCompleto)
+        tocar("Editar perfil")
+        campos[0].performTextReplacement("  Ángela O'Neill  ")
+        campos[1].performTextReplacement("  Ángie  ")
+        tocar("Guardar cambios")
+        esperarAjustes()
+        ver("Ángela O'Neill")
+        ver("Ángie")
+        ver("Á")
+        volver()
+        ver("Hola, Ángie")
+    }
+
+    private fun esperarAjustes() {
+        compose.waitUntil(5_000) { compose.onNodeWithText("Ajustes").isDisplayed() }
+    }
+
+    @Test
+    fun privacidadCancelaReintentaYReiniciaLaNavegacion() {
+        val estado = mutableStateOf(EstadoPerfil(cargando = false, usuario = usuario))
+        var intentos = 0
+        compose.setContent {
+            PayRoutineTheme {
+                NavegacionPayRoutine(
+                    estado = estado.value,
+                    inicio = inicio,
+                    reintentarCarga = {},
+                    eliminarDatos = {
+                        intentos++
+                        estado.value = if (intentos == 1) estado.value.copy(borrado = EstadoBorrado.Error)
+                        else EstadoPerfil(cargando = false)
+                    },
+                    limpiarErrorBorrado = { estado.value = estado.value.copy(borrado = EstadoBorrado.Disponible) },
+                    registrar = { nombre, apodo ->
+                        estado.value = EstadoPerfil(
+                            cargando = false,
+                            usuario = Usuario("48bb0e67-a52f-4468-b198-e47897f5c40d", nombre, apodo),
+                        )
+                    },
+                )
+            }
+        }
+        compose.onNodeWithContentDescription("Ajustes").performClick()
+        tocar("Datos y privacidad")
+        compose.onNodeWithText("Exportar datos").assertIsNotEnabled().assertHasNoClickAction()
+        ver("Pendiente de definición")
+        tocar("Información de privacidad")
+        ver("Qué datos se guardan")
+        volver()
+        tocar("Eliminar todos los datos")
+        ver("¿Eliminar todos los datos?")
+        tocar("Cancelar")
+        compose.onNodeWithText("¿Eliminar todos los datos?").assertDoesNotExist()
+        org.junit.Assert.assertEquals(0, intentos)
+
+        tocar("Eliminar todos los datos")
+        val confirmar = compose.onNode(hasText("Eliminar todos los datos") and hasAnyAncestor(isDialog()))
+        confirmar.performClick()
+        ver("No se pudieron eliminar los datos. Puedes volver a intentarlo.")
+        confirmar.performClick()
+        ver("Comenzar")
+        compose.onNodeWithText("Datos y privacidad").assertDoesNotExist()
+
+        tocar("Comenzar")
+        val campos = compose.onAllNodes(hasSetTextAction())
+        campos[0].performTextInput("Nuevo perfil")
+        campos[1].performTextInput("Nuevo")
+        tocar("Guardar y continuar")
+        ver("Hola, Nuevo")
+        compose.onNodeWithContentDescription("Volver").assertDoesNotExist()
     }
 
     @Test

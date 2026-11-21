@@ -1,12 +1,13 @@
 package cl.payroutine.datos.repositorio
 
+import androidx.room.withTransaction
 import cl.payroutine.datos.local.BaseDatosPayRoutine
 import cl.payroutine.datos.local.entidad.Categoria
 import cl.payroutine.datos.local.entidad.Movimiento
 import cl.payroutine.datos.local.entidad.PagoPendiente
 import cl.payroutine.datos.local.entidad.Presupuesto
 
-class RepositorioFinanzas(baseDatos: BaseDatosPayRoutine) {
+class RepositorioFinanzas(private val baseDatos: BaseDatosPayRoutine) {
     private val categoriaDao = baseDatos.categoriaDao()
     private val movimientoDao = baseDatos.movimientoDao()
     private val presupuestoDao = baseDatos.presupuestoDao()
@@ -17,7 +18,10 @@ class RepositorioFinanzas(baseDatos: BaseDatosPayRoutine) {
 
     suspend fun registrarUsuario(nombreCompleto: String, apodo: String) {
         require(nombreCompleto.isNotBlank() && apodo.isNotBlank())
-        usuarioDao.registrarSiFalta(nombreCompleto.trim(), apodo.trim())
+        baseDatos.withTransaction {
+            cargarCategoriasPredefinidas()
+            usuarioDao.registrarSiFalta(nombreCompleto.trim(), apodo.trim())
+        }
     }
 
     suspend fun actualizarDatosUsuario(id: String, nombreCompleto: String, apodo: String): Int {
@@ -32,6 +36,19 @@ class RepositorioFinanzas(baseDatos: BaseDatosPayRoutine) {
     fun observarMovimientosConCategoria() = movimientoDao.observarConCategoria()
     fun observarPresupuestos() = presupuestoDao.observarTodos()
     fun observarPagos() = pagoPendienteDao.observarTodos()
+
+    suspend fun eliminarTodosLosDatos() = baseDatos.withTransaction {
+        movimientoDao.eliminarTodos()
+        presupuestoDao.eliminarTodos()
+        pagoPendienteDao.eliminarTodos()
+        categoriaDao.eliminarPersonalizadas()
+        cargarCategoriasPredefinidas()
+        usuarioDao.eliminarTodos()
+    }
+
+    private suspend fun cargarCategoriasPredefinidas() {
+        categoriaDao.prepararIniciales()
+    }
 
     suspend fun insertar(categoria: Categoria) = categoriaDao.insertar(categoria)
     suspend fun insertar(movimiento: Movimiento) = movimientoDao.insertar(movimiento)

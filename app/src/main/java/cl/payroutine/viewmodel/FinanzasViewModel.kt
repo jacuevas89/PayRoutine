@@ -29,7 +29,7 @@ class FinanzasViewModel(aplicacion: Application) : AndroidViewModel(aplicacion) 
     val pagos = repositorio.observarPagos()
 
     internal val inicio = repositorio.observarInicio(observarFechaLocal(aplicacion))
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(), null)
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(replayExpirationMillis = 0), null)
 }
 
 internal fun RepositorioFinanzas.observarInicio(fechas: Flow<FechaLocal>): Flow<DatosInicio> =
