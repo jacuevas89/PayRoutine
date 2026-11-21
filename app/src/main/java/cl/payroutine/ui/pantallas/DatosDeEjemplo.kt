@@ -44,11 +44,11 @@ internal object DatosDeEjemplo {
     )
 
     val formularioGasto = FormularioMovimientoEjemplo(
-        "Nuevo gasto", "$ 45.000", listOf("Alimentación", "Transporte", "Hogar", "Servicios", "Ocio", "Salud"),
+        "Nuevo gasto", "$ 45.000",
         "Ej: compra de la semana", "Guardar gasto", RojoGasto,
     )
     val formularioIngreso = FormularioMovimientoEjemplo(
-        "Nuevo ingreso", "$ 150.000", listOf("Sueldo", "Freelance", "Otros ingresos"),
+        "Nuevo ingreso", "$ 150.000",
         "Ej: pago de proyecto", "Guardar ingreso", VerdeIngreso,
     )
 
@@ -75,6 +75,6 @@ internal data class PagoEjemplo(
 internal data class GastoEjemplo(val categoria: String, val monto: String, val porcentaje: Int, val color: Color)
 
 internal data class FormularioMovimientoEjemplo(
-    val titulo: String, val monto: String, val categorias: List<String>,
+    val titulo: String, val monto: String,
     val nota: String, val guardar: String, val color: Color,
 )

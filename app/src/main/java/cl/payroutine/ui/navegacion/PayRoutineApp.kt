@@ -27,6 +27,8 @@ import androidx.navigation.compose.rememberNavController
 import cl.payroutine.ui.pantallas.*
 import cl.payroutine.ui.theme.*
 import cl.payroutine.viewmodel.DatosInicio
+import cl.payroutine.viewmodel.CategoriasViewModel
+import cl.payroutine.viewmodel.EstadoCategorias
 import cl.payroutine.viewmodel.EstadoPerfil
 import cl.payroutine.viewmodel.FinanzasViewModel
 import cl.payroutine.viewmodel.PerfilViewModel
@@ -53,14 +55,20 @@ private enum class Seccion(val ruta: String, val titulo: String, val icono: Stri
 }
 
 @Composable
-internal fun PayRoutineApp(perfil: PerfilViewModel, finanzas: FinanzasViewModel) {
+internal fun PayRoutineApp(perfil: PerfilViewModel, finanzas: FinanzasViewModel, categorias: CategoriasViewModel) {
     val estado by perfil.estado.collectAsState()
+    val estadoCategorias by categorias.estado.collectAsState()
     val inicio = if (estado.usuario != null && !estado.errorCarga) {
         finanzas.inicio.collectAsState().value
     } else {
         null
     }
-    NavegacionPayRoutine(estado, inicio, perfil::reintentarCarga, perfil::registrar)
+    NavegacionPayRoutine(
+        estado, inicio, perfil::reintentarCarga,
+        categorias = estadoCategorias,
+        reintentarCategorias = categorias::reintentarCarga,
+        registrar = perfil::registrar,
+    )
 }
 
 @Composable
@@ -68,6 +76,8 @@ internal fun NavegacionPayRoutine(
     estado: EstadoPerfil,
     inicio: DatosInicio?,
     reintentarCarga: () -> Unit,
+    categorias: EstadoCategorias = EstadoCategorias(),
+    reintentarCategorias: () -> Unit = {},
     registrar: (String, String) -> Unit,
 ) {
     val usuario = estado.usuario
@@ -76,15 +86,21 @@ internal fun NavegacionPayRoutine(
         return
     }
 
-    NavegacionPrincipal(usuario.apodo, inicio)
+    NavegacionPrincipal(usuario.apodo, inicio, categorias, reintentarCategorias)
 }
 
 @Composable
-private fun NavegacionPrincipal(apodo: String, inicio: DatosInicio?) {
+private fun NavegacionPrincipal(
+    apodo: String,
+    inicio: DatosInicio?,
+    categorias: EstadoCategorias,
+    reintentarCategorias: () -> Unit,
+) {
     val navegador = rememberNavController()
     val entradaActual = navegador.currentBackStackEntryAsState().value
     val apodoActual by rememberUpdatedState(apodo)
     val datosActuales by rememberUpdatedState(inicio)
+    val categoriasActuales by rememberUpdatedState(categorias)
     val rutaActual = entradaActual?.destination?.route ?: Seccion.Inicio.ruta
     val seccionActual = Seccion.entries.firstOrNull { it.ruta == rutaActual }
     val fondoSuperior = if (seccionActual == Seccion.Inicio) AzulNoche else Color.White
@@ -172,7 +188,9 @@ private fun NavegacionPrincipal(apodo: String, inicio: DatosInicio?) {
                     )
                 }
                 composable(Seccion.Resumen.ruta) { PantallaResumen() }
-                composable(NUEVO_MOVIMIENTO) { origen -> PantallaNuevoMovimiento { volver(origen) } }
+                composable(NUEVO_MOVIMIENTO) { origen ->
+                    PantallaNuevoMovimiento(categoriasActuales, reintentarCategorias) { volver(origen) }
+                }
                 composable(NUEVO_PAGO) { origen -> PantallaNuevoPago { volver(origen) } }
                 composable(PRESUPUESTO_EXCEDIDO) { origen ->
                     PantallaPresupuestoExcedido(volver = { volver(origen) }, editar = { abrir(origen, EDITAR_PRESUPUESTO) })
@@ -187,7 +205,9 @@ private fun NavegacionPrincipal(apodo: String, inicio: DatosInicio?) {
                         verConsejos = { abrir(origen, CONSEJOS_AHORRO) },
                     )
                 }
-                composable(CATEGORIAS) { origen -> PantallaCategorias { volver(origen) } }
+                composable(CATEGORIAS) { origen ->
+                    PantallaCategorias(categoriasActuales, reintentarCategorias) { volver(origen) }
+                }
                 composable(CONSEJOS_AHORRO) { origen -> PantallaConsejosAhorro { volver(origen) } }
                 composable(RECORDATORIOS) { origen -> PantallaRecordatorios { volver(origen) } }
                 composable(CALENDARIO) { origen -> PantallaCalendario { volver(origen) } }

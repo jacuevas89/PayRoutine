@@ -26,6 +26,8 @@ class RepositorioFinanzas(baseDatos: BaseDatosPayRoutine) {
     }
 
     fun observarCategorias() = categoriaDao.observarTodos()
+    fun observarCategoriasConUso() = categoriaDao.observarConUso()
+    suspend fun prepararCategoriasIniciales() = categoriaDao.prepararIniciales()
     fun observarMovimientos() = movimientoDao.observarTodos()
     fun observarMovimientosConCategoria() = movimientoDao.observarConCategoria()
     fun observarPresupuestos() = presupuestoDao.observarTodos()
