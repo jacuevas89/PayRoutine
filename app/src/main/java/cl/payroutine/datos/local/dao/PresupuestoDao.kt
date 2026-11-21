@@ -10,6 +10,9 @@ import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface PresupuestoDao {
+    @Query("DELETE FROM Presupuesto")
+    suspend fun eliminarTodos()
+
     @Query("SELECT * FROM Presupuesto ORDER BY anio DESC, mes DESC, id")
     fun observarTodos(): Flow<List<Presupuesto>>
 

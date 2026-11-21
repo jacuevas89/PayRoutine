@@ -10,6 +10,9 @@ import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface PagoPendienteDao {
+    @Query("DELETE FROM PagoPendiente")
+    suspend fun eliminarTodos()
+
     @Query("SELECT * FROM PagoPendiente ORDER BY fecha_vencimiento, id")
     fun observarTodos(): Flow<List<PagoPendiente>>
 

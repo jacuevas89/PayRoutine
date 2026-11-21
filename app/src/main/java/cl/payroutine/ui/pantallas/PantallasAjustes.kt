@@ -10,16 +10,21 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.disabled
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import cl.payroutine.ui.theme.*
 
 @Composable
 internal fun PantallaAjustes(
     apodo: String,
+    nombreCompleto: String,
     volver: () -> Unit,
+    editarPerfil: () -> Unit,
     verCategorias: () -> Unit,
     verRecordatorios: () -> Unit,
     verConsejos: () -> Unit,
+    verDatosYPrivacidad: () -> Unit,
 ) {
     Column(Modifier.fillMaxSize()) {
         Cabecera("Ajustes", volver)
@@ -31,7 +36,9 @@ internal fun PantallaAjustes(
                     }
                     Column(Modifier.weight(1f)) {
                         Cifra(apodo, tamano = 17)
+                        Etiqueta(nombreCompleto)
                         Etiqueta("Tus datos se guardan en este teléfono")
+                        Enlace("Editar perfil", editarPerfil)
                     }
                 }
             }
@@ -40,7 +47,7 @@ internal fun PantallaAjustes(
             FilaAjustes("Consejos de ahorro", "bulb", AzulNoche, FondoSelector, alPulsar = verConsejos)
             FilaAjustes("Moneda", "coin", VerdeMarca, FondoMarca, "CLP $")
             FilaAjustes("Tema", "moon", AzulNoche, FondoSelector, "Claro")
-            FilaAjustes("Respaldo de datos", "download", AzulNoche, FondoSelector, "Exportar")
+            FilaAjustes("Datos y privacidad", "list", AzulNoche, FondoSelector, alPulsar = verDatosYPrivacidad)
             Etiqueta("PayRoutine · Versión 1.0 (prototipo)")
         }
     }
@@ -95,24 +102,30 @@ internal fun PantallaConsejosAhorro(volver: () -> Unit) {
 }
 
 @Composable
-private fun FilaAjustes(
+internal fun FilaAjustes(
     titulo: String,
     icono: String,
     color: Color,
     fondo: Color,
     detalle: String? = null,
+    habilitada: Boolean = true,
+    colorTitulo: Color = Texto,
     alPulsar: (() -> Unit)? = null,
 ) {
-    Tarjeta(Modifier.fillMaxWidth(), relleno = 12, alPulsar = alPulsar) {
+    val estado = if (habilitada) Modifier else Modifier.semantics(mergeDescendants = true) { disabled() }
+    Tarjeta(Modifier.fillMaxWidth().then(estado), relleno = 12, alPulsar = alPulsar.takeIf { habilitada }) {
         Row(
             Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(12.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Insignia(icono, color, fondo)
-            Destacado(titulo, modifier = Modifier.weight(1f))
-            if (detalle != null) Etiqueta(detalle)
-            Icono("next", TextoSecundario, Modifier.size(16.dp))
+            Column(Modifier.weight(1f)) {
+                Destacado(titulo, if (habilitada) colorTitulo else TextoSecundario)
+                if (!habilitada && detalle != null) Etiqueta(detalle)
+            }
+            if (habilitada && detalle != null) Etiqueta(detalle)
+            if (habilitada) Icono("next", TextoSecundario, Modifier.size(16.dp))
         }
     }
 }
