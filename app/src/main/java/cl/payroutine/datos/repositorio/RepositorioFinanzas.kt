@@ -2,10 +2,13 @@ package cl.payroutine.datos.repositorio
 
 import androidx.room.withTransaction
 import cl.payroutine.datos.local.BaseDatosPayRoutine
+import cl.payroutine.datos.local.categoriasPredefinidas
 import cl.payroutine.datos.local.entidad.Categoria
 import cl.payroutine.datos.local.entidad.Movimiento
 import cl.payroutine.datos.local.entidad.PagoPendiente
 import cl.payroutine.datos.local.entidad.Presupuesto
+import cl.payroutine.datos.local.entidad.TipoMovimiento
+import cl.payroutine.datos.local.normalizarNombreCategoria
 import java.time.LocalDate
 import java.time.ZoneId
 import java.util.Date
@@ -35,6 +38,19 @@ class RepositorioFinanzas(private val baseDatos: BaseDatosPayRoutine) {
     fun observarCategorias() = categoriaDao.observarTodos()
     fun observarCategoriasConUso() = categoriaDao.observarConUso()
     suspend fun prepararCategoriasIniciales() = categoriaDao.prepararIniciales()
+
+    /** Devuelve false si el nombre ya está en uso en este tipo de categoría. */
+    suspend fun crearCategoriaPersonalizada(nombre: String, tipo: TipoMovimiento): Boolean = baseDatos.withTransaction {
+        require(nombre.isNotBlank())
+        val clave = normalizarNombreCategoria(nombre)
+        val reservado = categoriasPredefinidas[tipo].orEmpty().any { normalizarNombreCategoria(it) == clave }
+        if (reservado || categoriaDao.obtenerTodos().any { it.tipo == tipo && normalizarNombreCategoria(it.nombre) == clave }) {
+            return@withTransaction false
+        }
+        categoriaDao.insertar(Categoria(nombre = nombre.trim(), tipo = tipo, esPredefinida = false))
+        true
+    }
+
     fun observarMovimientos() = movimientoDao.observarTodos()
     fun observarMovimientosConCategoria() = movimientoDao.observarConCategoria()
     fun observarPresupuestos() = presupuestoDao.observarTodos()

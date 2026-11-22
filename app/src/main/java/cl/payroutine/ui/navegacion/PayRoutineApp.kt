@@ -31,6 +31,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import cl.payroutine.datos.local.entidad.TipoMovimiento
 import cl.payroutine.datos.local.entidad.Usuario
 import cl.payroutine.ui.pantallas.*
 import cl.payroutine.ui.theme.*
@@ -83,6 +84,8 @@ internal fun PayRoutineApp(perfil: PerfilViewModel, finanzas: FinanzasViewModel,
         reintentarCarga = perfil::reintentarCarga,
         categorias = estadoCategorias,
         reintentarCategorias = categorias::reintentarCarga,
+        crearCategoria = categorias::crearCategoria,
+        limpiarCreacionCategoria = categorias::limpiarCreacion,
         prepararEdicion = perfil::prepararEdicion,
         guardarEdicion = perfil::guardarEdicion,
         eliminarDatos = perfil::eliminarTodosLosDatos,
@@ -102,6 +105,8 @@ internal fun NavegacionPayRoutine(
     guardarEdicion: (String, String) -> Unit = { _, _ -> },
     eliminarDatos: () -> Unit = {},
     limpiarErrorBorrado: () -> Unit = {},
+    crearCategoria: (String, TipoMovimiento) -> Unit = { _, _ -> },
+    limpiarCreacionCategoria: () -> Unit = {},
     registrar: (String, String) -> Unit,
 ) {
     val usuario = estado.usuario
@@ -114,7 +119,7 @@ internal fun NavegacionPayRoutine(
         NavegacionPrincipal(
             usuario, inicio, estado.edicion, estado.borrado,
             prepararEdicion, guardarEdicion, eliminarDatos, limpiarErrorBorrado,
-            categorias, reintentarCategorias,
+            categorias, reintentarCategorias, crearCategoria, limpiarCreacionCategoria,
         )
     }
 }
@@ -131,6 +136,8 @@ private fun NavegacionPrincipal(
     limpiarErrorBorrado: () -> Unit,
     categorias: EstadoCategorias,
     reintentarCategorias: () -> Unit,
+    crearCategoria: (String, TipoMovimiento) -> Unit,
+    limpiarCreacionCategoria: () -> Unit,
 ) {
     val navegador = rememberNavController()
     val entradaActual = navegador.currentBackStackEntryAsState().value
@@ -210,7 +217,7 @@ private fun NavegacionPrincipal(
                     )
                 }
                 composable(Seccion.Movimientos.ruta) { origen ->
-                    PantallaMovimientos(datosActuales) { abrir(origen, "$DETALLE_MOVIMIENTO/$it") }
+                    PantallaMovimientos(datosActuales, categoriasActuales) { abrir(origen, "$DETALLE_MOVIMIENTO/$it") }
                 }
                 composable(Seccion.Presupuesto.ruta) { origen ->
                     PantallaPresupuesto(
@@ -295,7 +302,9 @@ private fun NavegacionPrincipal(
                     )
                 }
                 composable(CATEGORIAS) { origen ->
-                    PantallaCategorias(categoriasActuales, reintentarCategorias) { volver(origen) }
+                    PantallaCategorias(
+                        categoriasActuales, reintentarCategorias, crearCategoria, limpiarCreacionCategoria,
+                    ) { volver(origen) }
                 }
                 composable(CONSEJOS_AHORRO) { origen -> PantallaConsejosAhorro { volver(origen) } }
                 composable(RECORDATORIOS) { origen -> PantallaRecordatorios { volver(origen) } }
