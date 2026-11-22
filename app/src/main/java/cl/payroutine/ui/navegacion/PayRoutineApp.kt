@@ -1,5 +1,6 @@
 package cl.payroutine.ui.navegacion
 
+import android.app.Application
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
@@ -12,15 +13,18 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavBackStackEntry
+import androidx.lifecycle.ViewModelProvider
 import androidx.navigation.NavType
 import androidx.navigation.navArgument
 import androidx.navigation.compose.NavHost
@@ -38,6 +42,7 @@ import cl.payroutine.viewmodel.EstadoEdicionPerfil
 import cl.payroutine.viewmodel.EstadoPerfil
 import cl.payroutine.viewmodel.FinanzasViewModel
 import cl.payroutine.viewmodel.PerfilViewModel
+import cl.payroutine.viewmodel.RegistroMovimientoViewModel
 
 private const val NUEVO_MOVIMIENTO = "nuevo-movimiento"
 private const val NUEVO_PAGO = "nuevo-pago"
@@ -222,7 +227,19 @@ private fun NavegacionPrincipal(
                 }
                 composable(Seccion.Resumen.ruta) { PantallaResumen() }
                 composable(NUEVO_MOVIMIENTO) { origen ->
-                    PantallaNuevoMovimiento(categoriasActuales, reintentarCategorias) { volver(origen) }
+                    val aplicacion = LocalContext.current.applicationContext as Application
+                    val registro = remember(origen) {
+                        ViewModelProvider(origen, ViewModelProvider.AndroidViewModelFactory.getInstance(aplicacion))[
+                            RegistroMovimientoViewModel::class.java
+                        ]
+                    }
+                    val estadoRegistro by registro.estado.collectAsState()
+                    LaunchedEffect(estadoRegistro.idGuardado) {
+                        if (estadoRegistro.idGuardado != null) volver(origen)
+                    }
+                    PantallaNuevoMovimiento(
+                        categoriasActuales, reintentarCategorias, estadoRegistro, registro::guardar,
+                    ) { volver(origen) }
                 }
                 composable(NUEVO_PAGO) { origen -> PantallaNuevoPago { volver(origen) } }
                 composable(PRESUPUESTO_EXCEDIDO) { origen ->

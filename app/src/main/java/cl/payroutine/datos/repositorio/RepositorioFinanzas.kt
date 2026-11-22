@@ -6,6 +6,9 @@ import cl.payroutine.datos.local.entidad.Categoria
 import cl.payroutine.datos.local.entidad.Movimiento
 import cl.payroutine.datos.local.entidad.PagoPendiente
 import cl.payroutine.datos.local.entidad.Presupuesto
+import java.time.LocalDate
+import java.time.ZoneId
+import java.util.Date
 
 class RepositorioFinanzas(private val baseDatos: BaseDatosPayRoutine) {
     private val categoriaDao = baseDatos.categoriaDao()
@@ -48,6 +51,25 @@ class RepositorioFinanzas(private val baseDatos: BaseDatosPayRoutine) {
 
     private suspend fun cargarCategoriasPredefinidas() {
         categoriaDao.prepararIniciales()
+    }
+
+    suspend fun registrarMovimiento(datos: NuevoMovimiento): Long = baseDatos.withTransaction {
+        require(datos.nombre.isNotBlank()) { "El nombre del movimiento es obligatorio" }
+        require(datos.monto in 1..MONTO_MAXIMO_EXACTO) { "El monto debe ser un número positivo de pesos enteros" }
+        val zona = ZoneId.systemDefault()
+        require(datos.fecha <= LocalDate.now(zona)) { "La fecha no puede ser futura" }
+        val categoria = categoriaDao.buscarPorId(datos.categoriaId)
+        require(categoria != null && categoria.tipo == datos.tipo) { "La categoría no corresponde al tipo de movimiento" }
+        movimientoDao.insertar(
+            Movimiento(
+                nombre = datos.nombre.trim(),
+                tipo = datos.tipo,
+                monto = datos.monto.toDouble(),
+                fecha = Date.from(datos.fecha.atStartOfDay(zona).toInstant()),
+                categoriaId = datos.categoriaId,
+                nota = datos.nota.trim().takeIf { it.isNotEmpty() },
+            ),
+        )
     }
 
     suspend fun insertar(categoria: Categoria) = categoriaDao.insertar(categoria)

@@ -43,15 +43,6 @@ internal object DatosDeEjemplo {
         GastoEjemplo("Servicios", "$45.200", 5, TextoSecundario),
     )
 
-    val formularioGasto = FormularioMovimientoEjemplo(
-        "Nuevo gasto", "$ 45.000",
-        "Ej: compra de la semana", "Guardar gasto", RojoGasto,
-    )
-    val formularioIngreso = FormularioMovimientoEjemplo(
-        "Nuevo ingreso", "$ 150.000",
-        "Ej: pago de proyecto", "Guardar ingreso", VerdeIngreso,
-    )
-
     val consejosAhorro = listOf(
         "Anota tus gastos hormiga" to "Los gastos chicos del día a día se acumulan. Registrarlos te ayuda a verlos.",
         "Ahorra apenas recibas tu ingreso" to "Separa un monto fijo al inicio del mes, aunque sea pequeño, antes de gastar.",
@@ -73,8 +64,3 @@ internal data class PagoEjemplo(
 )
 
 internal data class GastoEjemplo(val categoria: String, val monto: String, val porcentaje: Int, val color: Color)
-
-internal data class FormularioMovimientoEjemplo(
-    val titulo: String, val monto: String,
-    val nota: String, val guardar: String, val color: Color,
-)

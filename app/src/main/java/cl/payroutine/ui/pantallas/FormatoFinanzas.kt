@@ -26,7 +26,8 @@ internal fun montoEnPantalla(monto: Number): String {
 
 internal fun MovimientoConCategoria.esIngreso(): Boolean = movimiento.tipo == TipoMovimiento.Ingreso
 
-internal fun MovimientoConCategoria.titulo(): String = if (esIngreso()) "Ingreso" else "Gasto"
+internal fun MovimientoConCategoria.titulo(): String =
+    movimiento.nombre.takeIf { it.isNotBlank() } ?: if (esIngreso()) "Ingreso" else "Gasto"
 
 internal fun MovimientoConCategoria.fechaEnPantalla(zona: ZoneId): String =
     fechaEnPantalla(movimiento.fecha.toInstant().atZone(zona).toLocalDate())
