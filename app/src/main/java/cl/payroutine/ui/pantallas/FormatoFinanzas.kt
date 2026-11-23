@@ -11,11 +11,19 @@ import java.util.Locale
 private val chile = Locale.forLanguageTag("es-CL")
 private val formatoMes = DateTimeFormatter.ofPattern("MMMM uuuu", chile)
 private val formatoFecha = DateTimeFormatter.ofPattern("d MMM uuuu", chile)
+private val formatoDiaMes = DateTimeFormatter.ofPattern("d MMM", chile)
 
 internal fun mesEnPantalla(fecha: LocalDate): String =
     formatoMes.format(fecha).replaceFirstChar { it.uppercase(chile) }
 
 internal fun fechaEnPantalla(fecha: LocalDate): String = formatoFecha.format(fecha)
+
+internal fun rangoEnPantalla(desde: LocalDate, hasta: LocalDate): String = when {
+    desde == hasta -> fechaEnPantalla(desde)
+    desde.year != hasta.year -> "${fechaEnPantalla(desde)} – ${fechaEnPantalla(hasta)}"
+    desde.month == hasta.month -> "${desde.dayOfMonth}–${fechaEnPantalla(hasta)}"
+    else -> "${formatoDiaMes.format(desde)} – ${fechaEnPantalla(hasta)}"
+}
 
 internal fun montoEnPantalla(monto: Number): String {
     val valor = monto.toString().toBigDecimal().stripTrailingZeros()
@@ -26,7 +34,8 @@ internal fun montoEnPantalla(monto: Number): String {
 
 internal fun MovimientoConCategoria.esIngreso(): Boolean = movimiento.tipo == TipoMovimiento.Ingreso
 
-internal fun MovimientoConCategoria.titulo(): String = if (esIngreso()) "Ingreso" else "Gasto"
+internal fun MovimientoConCategoria.titulo(): String =
+    movimiento.nombre.takeIf { it.isNotBlank() } ?: if (esIngreso()) "Ingreso" else "Gasto"
 
 internal fun MovimientoConCategoria.fechaEnPantalla(zona: ZoneId): String =
     fechaEnPantalla(movimiento.fecha.toInstant().atZone(zona).toLocalDate())

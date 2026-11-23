@@ -32,7 +32,7 @@ class RegistroUsuarioTest {
                 val categorias = repositorio.observarCategorias().first()
                 assertEquals("Alimentación", categorias.single { it.id == 1 }.nombre)
                 assertFalse(categorias.single { it.id == 1 }.esPredefinida)
-                assertEquals(9, categorias.count { it.esPredefinida })
+                assertEquals(16, categorias.count { it.esPredefinida })
                 assertEquals("Compra", repositorio.observarMovimientos().first().single().nota)
                 assertEquals(40000.0, repositorio.observarPresupuestos().first().single().montoPresupuestado, 0.0)
                 assertEquals("Internet", repositorio.observarPagos().first().single().descripcion)
@@ -81,9 +81,9 @@ class RegistroUsuarioTest {
                 assertEquals(idUsuario, repositorio.observarUsuario().first()?.id)
                 assertEquals(1, repositorio.observarMovimientos().first().single().categoriaId)
                 assertEquals(1, repositorio.observarPresupuestos().first().single().categoriaId)
-                assertEquals(10, categorias.size)
+                assertEquals(17, categorias.size)
                 assertFalse(categorias.single { it.id == 1 }.esPredefinida)
-                assertEquals(9, categorias.count { it.esPredefinida })
+                assertEquals(16, categorias.count { it.esPredefinida })
                 assertEquals(2, categorias.count { it.nombre == "Alimentación" })
             }
         } finally {
