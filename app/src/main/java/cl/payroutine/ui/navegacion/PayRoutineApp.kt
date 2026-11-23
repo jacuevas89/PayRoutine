@@ -33,6 +33,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import cl.payroutine.datos.local.entidad.TipoMovimiento
+import cl.payroutine.datos.local.entidad.RecordatorioMovimiento
 import cl.payroutine.datos.local.entidad.Usuario
 import cl.payroutine.ui.pantallas.*
 import cl.payroutine.ui.theme.*
@@ -47,6 +48,7 @@ import cl.payroutine.viewmodel.EstadoPerfil
 import cl.payroutine.viewmodel.FinanzasViewModel
 import cl.payroutine.viewmodel.PerfilViewModel
 import cl.payroutine.viewmodel.RegistroMovimientoViewModel
+import cl.payroutine.viewmodel.RecordatoriosViewModel
 
 private const val NUEVO_MOVIMIENTO = "nuevo-movimiento"
 private const val NUEVO_PAGO = "nuevo-pago"
@@ -74,7 +76,14 @@ private enum class Seccion(val ruta: String, val titulo: String, val icono: Stri
 }
 
 @Composable
-internal fun PayRoutineApp(perfil: PerfilViewModel, finanzas: FinanzasViewModel, categorias: CategoriasViewModel) {
+internal fun PayRoutineApp(
+    perfil: PerfilViewModel,
+    finanzas: FinanzasViewModel,
+    categorias: CategoriasViewModel,
+    recordatorios: RecordatoriosViewModel,
+    usuarioDelAviso: String?,
+    consumirAviso: () -> Unit,
+) {
     val estado by perfil.estado.collectAsState()
     val estadoCategorias by categorias.estado.collectAsState()
     val inicio = if (estado.usuario != null && !estado.errorCarga) {
@@ -94,6 +103,9 @@ internal fun PayRoutineApp(perfil: PerfilViewModel, finanzas: FinanzasViewModel,
         guardarEdicion = perfil::guardarEdicion,
         eliminarDatos = perfil::eliminarTodosLosDatos,
         limpiarErrorBorrado = perfil::limpiarErrorBorrado,
+        recordatorios = recordatorios,
+        usuarioDelAviso = usuarioDelAviso,
+        consumirAviso = consumirAviso,
         registrar = perfil::registrar,
     )
 }
@@ -111,6 +123,9 @@ internal fun NavegacionPayRoutine(
     limpiarErrorBorrado: () -> Unit = {},
     crearCategoria: (String, TipoMovimiento) -> Unit = { _, _ -> },
     limpiarCreacionCategoria: () -> Unit = {},
+    recordatorios: RecordatoriosViewModel? = null,
+    usuarioDelAviso: String? = null,
+    consumirAviso: () -> Unit = {},
     registrar: (String, String) -> Unit,
 ) {
     val usuario = estado.usuario
@@ -124,6 +139,7 @@ internal fun NavegacionPayRoutine(
             usuario, inicio, estado.edicion, estado.borrado,
             prepararEdicion, guardarEdicion, eliminarDatos, limpiarErrorBorrado,
             categorias, reintentarCategorias, crearCategoria, limpiarCreacionCategoria,
+            recordatorios, usuarioDelAviso, consumirAviso,
         )
     }
 }
@@ -142,6 +158,9 @@ private fun NavegacionPrincipal(
     reintentarCategorias: () -> Unit,
     crearCategoria: (String, TipoMovimiento) -> Unit,
     limpiarCreacionCategoria: () -> Unit,
+    recordatorios: RecordatoriosViewModel?,
+    usuarioDelAviso: String?,
+    consumirAviso: () -> Unit,
 ) {
     val navegador = rememberNavController()
     val entradaActual = navegador.currentBackStackEntryAsState().value
@@ -172,6 +191,15 @@ private fun NavegacionPrincipal(
             }
             restoreState = true
             launchSingleTop = true
+        }
+    }
+
+    LaunchedEffect(usuarioDelAviso, entradaActual) {
+        if (usuarioDelAviso != null && entradaActual != null) {
+            if (usuarioDelAviso == usuario.id && entradaActual.destination.route != NUEVO_MOVIMIENTO) {
+                abrir(entradaActual, NUEVO_MOVIMIENTO)
+            }
+            consumirAviso()
         }
     }
 
@@ -335,7 +363,19 @@ private fun NavegacionPrincipal(
                     ) { volver(origen) }
                 }
                 composable(CONSEJOS_AHORRO) { origen -> PantallaConsejosAhorro { volver(origen) } }
-                composable(RECORDATORIOS) { origen -> PantallaRecordatorios { volver(origen) } }
+                composable(RECORDATORIOS) { origen ->
+                    val configuraciones = remember(recordatorios, usuario.id) { recordatorios?.observar(usuario.id) }
+                    val configuracion = configuraciones?.collectAsState(initial = null)?.value
+                    val error = recordatorios?.error?.collectAsState()?.value ?: false
+                    PantallaRecordatorios(
+                        configuracion = configuracion ?: RecordatorioMovimiento(usuario.id),
+                        error = error,
+                        notificacionesHabilitadas = { recordatorios?.notificacionesHabilitadas() ?: true },
+                        alarmasExactasHabilitadas = { recordatorios?.alarmasExactasHabilitadas() ?: true },
+                        canalSilenciado = { recordatorios?.canalSilenciado() ?: false },
+                        actualizar = { recordatorios?.actualizar(usuario.id, it) },
+                    ) { volver(origen) }
+                }
                 composable(CALENDARIO) { origen -> PantallaCalendario { volver(origen) } }
                 composable(HISTORIAL_PAGOS) { origen -> PantallaHistorialPagos { volver(origen) } }
                 composable(DETALLE_CUOTA) { origen -> PantallaDetalleCuota { volver(origen) } }

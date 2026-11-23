@@ -7,6 +7,7 @@ import cl.payroutine.datos.local.entidad.Categoria
 import cl.payroutine.datos.local.entidad.Movimiento
 import cl.payroutine.datos.local.entidad.PagoPendiente
 import cl.payroutine.datos.local.entidad.Presupuesto
+import cl.payroutine.datos.local.entidad.RecordatorioMovimiento
 import cl.payroutine.datos.local.entidad.TipoMovimiento
 import cl.payroutine.datos.local.normalizarNombreCategoria
 import java.time.LocalDate
@@ -19,8 +20,13 @@ class RepositorioFinanzas(private val baseDatos: BaseDatosPayRoutine) {
     private val presupuestoDao = baseDatos.presupuestoDao()
     private val pagoPendienteDao = baseDatos.pagoPendienteDao()
     private val usuarioDao = baseDatos.usuarioDao()
+    private val recordatorioDao = baseDatos.recordatorioMovimientoDao()
 
     fun observarUsuario() = usuarioDao.observar()
+
+    fun observarRecordatorio(usuarioId: String) = recordatorioDao.observar(usuarioId)
+    suspend fun obtenerRecordatorio() = recordatorioDao.obtener()
+    suspend fun guardarRecordatorio(recordatorio: RecordatorioMovimiento) = recordatorioDao.guardar(recordatorio)
 
     suspend fun registrarUsuario(nombreCompleto: String, apodo: String) {
         require(nombreCompleto.isNotBlank() && apodo.isNotBlank())

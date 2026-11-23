@@ -264,6 +264,25 @@ class NavegacionPayRoutineTest {
     }
 
     @Test
+    fun avisoDeMovimientosAbreFormularioYSeConsumeUnaVez() {
+        val aviso = mutableStateOf<String?>(usuario.id)
+        compose.setContent {
+            PayRoutineTheme {
+                NavegacionPayRoutine(
+                    EstadoPerfil(cargando = false, usuario = usuario), inicio, {},
+                    usuarioDelAviso = aviso.value,
+                    consumirAviso = { aviso.value = null },
+                ) { _, _ -> }
+            }
+        }
+        ver("Nuevo gasto")
+        tocar("Ingreso")
+        ver("Nuevo ingreso")
+        atrasAndroid()
+        ver("Hola, Mari")
+    }
+
+    @Test
     fun resumenPermiteElegirMesYAnioYReflejaCambiosSinSalir() {
         val datos = mutableStateOf(inicio)
         compose.setContent {

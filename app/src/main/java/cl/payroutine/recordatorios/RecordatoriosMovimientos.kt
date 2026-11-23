@@ -1,0 +1,182 @@
+package cl.payroutine.recordatorios
+
+import android.Manifest
+import android.app.AlarmManager
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.app.PendingIntent
+import android.content.Context
+import android.content.Intent
+import android.content.pm.PackageManager
+import android.database.sqlite.SQLiteException
+import android.media.AudioAttributes
+import android.os.Build
+import android.provider.Settings
+import androidx.core.app.NotificationCompat
+import androidx.core.app.NotificationManagerCompat
+import androidx.core.content.ContextCompat
+import cl.payroutine.MainActivity
+import cl.payroutine.R
+import cl.payroutine.datos.local.entidad.RecordatorioMovimiento
+import cl.payroutine.datos.repositorio.RepositorioFinanzas
+import java.time.LocalDate
+import java.time.ZonedDateTime
+import java.util.UUID
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+
+internal const val ABRIR_NUEVO_MOVIMIENTO = "cl.payroutine.recordatorios.ABRIR_NUEVO_MOVIMIENTO"
+internal const val EXTRA_USUARIO = "usuario"
+internal const val AVISO_MOVIMIENTO = "cl.payroutine.recordatorios.AVISO_MOVIMIENTO"
+internal const val EXTRA_PROGRAMACION = "programacion"
+internal const val EXTRA_DIA = "dia"
+internal const val CANAL_MOVIMIENTOS = "recordatorio_movimientos"
+private const val ID_AVISO = 91
+private const val FLAGS_ALARMA = PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_ONE_SHOT
+
+internal class RecordatoriosMovimientos(
+    private val contexto: Context,
+    private val repositorio: RepositorioFinanzas,
+) {
+    private val alarmas = requireNotNull(contexto.getSystemService(AlarmManager::class.java))
+    private val notificaciones = requireNotNull(contexto.getSystemService(NotificationManager::class.java))
+    private val mutex = Mutex()
+
+    fun observar(usuarioId: String) = repositorio.observarRecordatorio(usuarioId)
+
+    fun alarmasExactasHabilitadas(): Boolean =
+        Build.VERSION.SDK_INT < Build.VERSION_CODES.S || alarmas.canScheduleExactAlarms()
+
+    fun canalSilenciado(): Boolean = notificaciones.getNotificationChannel(CANAL_MOVIMIENTOS)
+        ?.let { it.importance < NotificationManager.IMPORTANCE_DEFAULT || it.sound == null } ?: false
+
+    fun notificacionesHabilitadas(): Boolean {
+        if (Build.VERSION.SDK_INT >= 33 &&
+            ContextCompat.checkSelfPermission(contexto, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+        ) return false
+        return NotificationManagerCompat.from(contexto).areNotificationsEnabled() &&
+            notificaciones.getNotificationChannel(CANAL_MOVIMIENTOS)?.importance != NotificationManager.IMPORTANCE_NONE
+    }
+
+    suspend fun actualizar(usuarioId: String, cambiar: (RecordatorioMovimiento) -> RecordatorioMovimiento) = mutex.withLock {
+        val anterior = repositorio.obtenerRecordatorio()?.takeIf { it.usuarioId == usuarioId }
+            ?: RecordatorioMovimiento(usuarioId)
+        val ahora = ZonedDateTime.now()
+        val nuevo = cambiar(anterior)
+        val referencia = if (nuevo.activo && !anterior.activo) {
+            val hoy = ahora.toLocalDate()
+            val fecha = if (hoy.atTime(nuevo.hora).atZone(ahora.zone).isAfter(ahora)) hoy else hoy.plusDays(1)
+            fecha.toEpochDay()
+        } else {
+            anterior.fechaReferencia
+        }
+        val guardado = nuevo.copy(fechaReferencia = referencia, programacionId = UUID.randomUUID().toString())
+        repositorio.guardarRecordatorio(guardado)
+        programar(guardado, ahora)
+        if (!guardado.activo) notificaciones.cancel(ID_AVISO)
+    }
+
+    suspend fun restaurar(siFalta: Boolean = false) = mutex.withLock {
+        if (siFalta && alarmaExistente() != null) return@withLock
+        programar(repositorio.obtenerRecordatorio(), ZonedDateTime.now())
+    }
+
+    suspend fun recibirAviso(idProgramacion: String?, dia: Long) = mutex.withLock {
+        val configuracion = repositorio.obtenerRecordatorio() ?: return@withLock
+        if (!configuracion.activo || configuracion.programacionId != idProgramacion) return@withLock
+        val ahora = ZonedDateTime.now()
+        val hoy = ahora.toLocalDate()
+        val diaActual = hoy.toEpochDay()
+        if (dia in (diaActual - 1)..diaActual &&
+            (configuracion.ultimoAviso == null || configuracion.ultimoAviso < diaActual) &&
+            !ahora.isBefore(LocalDate.ofEpochDay(dia).atTime(configuracion.hora).atZone(ahora.zone)) &&
+            notificacionesHabilitadas()
+        ) {
+            val actualizado = configuracion.copy(ultimoAviso = diaActual)
+            try {
+                publicar(actualizado.usuarioId)
+                repositorio.guardarRecordatorio(actualizado)
+            } finally {
+                programar(actualizado, ahora)
+            }
+        } else {
+            programar(configuracion, ahora)
+        }
+    }
+
+    suspend fun eliminarDatosLocales() = mutex.withLock {
+        cancelarAlarma()
+        notificaciones.cancelAll()
+        try {
+            repositorio.eliminarTodosLosDatos()
+        } catch (error: SQLiteException) {
+            programar(repositorio.obtenerRecordatorio(), ZonedDateTime.now())
+            throw error
+        }
+    }
+
+    private fun intencionAlarma() = Intent(contexto, ReceptorRecordatorios::class.java).setAction(AVISO_MOVIMIENTO)
+
+    private fun alarmaExistente(): PendingIntent? =
+        PendingIntent.getBroadcast(contexto, ID_AVISO, intencionAlarma(), FLAGS_ALARMA or PendingIntent.FLAG_NO_CREATE)
+
+    private fun cancelarAlarma() {
+        alarmaExistente()?.let {
+            alarmas.cancel(it)
+            it.cancel()
+        }
+    }
+
+    private fun programar(configuracion: RecordatorioMovimiento?, ahora: ZonedDateTime) {
+        if (configuracion?.activo != true) {
+            cancelarAlarma()
+            return
+        }
+        val siguiente = configuracion.siguienteAviso(ahora)
+        val intent = intencionAlarma()
+            .putExtra(EXTRA_PROGRAMACION, configuracion.programacionId)
+            .putExtra(EXTRA_DIA, siguiente.toLocalDate().toEpochDay())
+        val alarma = PendingIntent.getBroadcast(contexto, ID_AVISO, intent, FLAGS_ALARMA or PendingIntent.FLAG_UPDATE_CURRENT)
+        val instante = siguiente.toInstant().toEpochMilli()
+        if (alarmasExactasHabilitadas()) {
+            try {
+                alarmas.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, instante, alarma)
+                return
+            } catch (_: SecurityException) {
+                // El permiso puede cambiar entre la consulta y la programación.
+            }
+        }
+        try {
+            alarmas.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, instante, alarma)
+        } catch (error: SecurityException) {
+            alarma.cancel()
+            throw error
+        }
+    }
+
+    private fun publicar(usuarioId: String) {
+        notificaciones.createNotificationChannel(
+            NotificationChannel(CANAL_MOVIMIENTOS, "Recordatorio de movimientos", NotificationManager.IMPORTANCE_DEFAULT).apply {
+                setSound(
+                    Settings.System.DEFAULT_NOTIFICATION_URI,
+                    AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_NOTIFICATION).build(),
+                )
+            },
+        )
+        val intent = Intent(contexto, MainActivity::class.java)
+            .setAction(ABRIR_NUEVO_MOVIMIENTO)
+            .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+            .putExtra(EXTRA_USUARIO, usuarioId)
+        val abrir = PendingIntent.getActivity(
+            contexto, ID_AVISO, intent, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_CANCEL_CURRENT,
+        )
+        val notificacion = NotificationCompat.Builder(contexto, CANAL_MOVIMIENTOS)
+            .setSmallIcon(R.drawable.icono_bell)
+            .setContentTitle("Registra tus movimientos")
+            .setContentText("Toca para anotar un gasto o un ingreso en PayRoutine.")
+            .setContentIntent(abrir)
+            .setAutoCancel(true)
+            .build()
+        notificaciones.notify(ID_AVISO, notificacion)
+    }
+}

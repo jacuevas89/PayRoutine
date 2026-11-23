@@ -97,7 +97,7 @@ internal fun PantallaInformacionPrivacidad(volver: () -> Unit) {
             }
             Tarjeta(Modifier.fillMaxWidth(), espacio = 8) {
                 Destacado("Dónde se almacenan")
-                Etiqueta("Los datos se guardan en una base SQLite privada de PayRoutine, en este dispositivo. El funcionamiento actual es local. La configuración de recordatorios está pendiente.")
+                Etiqueta("PayRoutine guarda los datos en una base SQLite privada de este dispositivo, incluida la configuración del recordatorio de movimientos.")
             }
             Tarjeta(Modifier.fillMaxWidth(), espacio = 8) {
                 Destacado("Cómo eliminarlos")

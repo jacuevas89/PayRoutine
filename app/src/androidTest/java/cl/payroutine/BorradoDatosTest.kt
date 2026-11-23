@@ -9,6 +9,7 @@ import cl.payroutine.datos.local.entidad.Categoria
 import cl.payroutine.datos.local.entidad.Movimiento
 import cl.payroutine.datos.local.entidad.PagoPendiente
 import cl.payroutine.datos.local.entidad.Presupuesto
+import cl.payroutine.datos.local.entidad.RecordatorioMovimiento
 import cl.payroutine.datos.local.entidad.TipoMovimiento
 import cl.payroutine.datos.repositorio.RepositorioFinanzas
 import java.util.Date
@@ -33,6 +34,8 @@ class BorradoDatosTest {
                 val repositorio = RepositorioFinanzas(base)
                 repositorio.registrarUsuario("María Pérez", "Mari")
                 val usuario = requireNotNull(repositorio.observarUsuario().first())
+                val recordatorio = RecordatorioMovimiento(usuario.id, activo = true, minutoDelDia = 60)
+                repositorio.guardarRecordatorio(recordatorio)
                 val categoriasIniciales = repositorio.observarCategorias().first()
                 assertEquals(16, categoriasIniciales.size)
                 assertTrue(categoriasIniciales.all { it.esPredefinida })
@@ -57,6 +60,7 @@ class BorradoDatosTest {
                 sqlite.execSQL("CREATE TRIGGER fallar_borrado BEFORE DELETE ON Usuario BEGIN SELECT RAISE(ABORT, 'Fallo simulado'); END")
                 assertTrue(runCatching { repositorio.eliminarTodosLosDatos() }.exceptionOrNull() is SQLiteException)
                 assertEquals(usuario, repositorio.observarUsuario().first())
+                assertEquals(recordatorio, repositorio.obtenerRecordatorio())
                 assertEquals(
                     (predefinidas + categoria.copy(id = idCategoria) + homonima.copy(id = idHomonima)).toSet(),
                     repositorio.observarCategorias().first().toSet(),
@@ -76,6 +80,7 @@ class BorradoDatosTest {
             try {
                 val repositorio = RepositorioFinanzas(reabierta)
                 assertNull(repositorio.observarUsuario().first())
+                assertNull(repositorio.obtenerRecordatorio())
                 val categorias = repositorio.observarCategorias().first()
                 assertEquals(16, categorias.size)
                 assertTrue(categorias.all { it.esPredefinida })
