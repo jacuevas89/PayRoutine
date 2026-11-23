@@ -19,10 +19,11 @@ import cl.payroutine.datos.local.entidad.Usuario
 
 @Database(
     entities = [Categoria::class, Movimiento::class, Presupuesto::class, PagoPendiente::class, Usuario::class],
-    version = 3,
+    version = 4,
     autoMigrations = [
         AutoMigration(from = 1, to = 2),
         AutoMigration(from = 2, to = 3, spec = MigracionCategoriasPredefinidas::class),
+        AutoMigration(from = 3, to = 4),
     ],
 )
 @TypeConverters(ConvertidoresRoom::class)

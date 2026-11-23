@@ -5,6 +5,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -15,8 +16,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.semantics.Role
 import cl.payroutine.R
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import cl.payroutine.ui.theme.*
@@ -125,6 +129,11 @@ internal fun Icono(nombre: String, color: Color, modifier: Modifier = Modifier, 
         "up" -> R.drawable.icono_up
         "pie" -> R.drawable.icono_pie
         "chart" -> R.drawable.icono_chart
+        "educacion" -> R.drawable.icono_educacion
+        "vestuario" -> R.drawable.icono_vestuario
+        "mascotas" -> R.drawable.icono_mascotas
+        "trabajo" -> R.drawable.icono_trabajo
+        "ventas" -> R.drawable.icono_ventas
         else -> error("Icono de PayRoutine desconocido: $nombre")
     }
     Icon(painterResource(recurso), contentDescription = descripcion, modifier = modifier.size(20.dp), tint = color)
@@ -181,13 +190,35 @@ internal fun BotonPrincipal(
 }
 
 @Composable
-internal fun Pildora(texto: String, activa: Boolean = false) {
+internal fun Pildora(
+    texto: String,
+    activa: Boolean = false,
+    modifier: Modifier = Modifier,
+    unaLinea: Boolean = false,
+    rol: Role = Role.RadioButton,
+    habilitada: Boolean = true,
+    alPulsar: (() -> Unit)? = null,
+) {
     Surface(
+        modifier = if (alPulsar == null) modifier else modifier.selectable(
+            activa, enabled = habilitada, role = rol, onClick = alPulsar,
+        ),
         shape = CircleShape, color = if (activa) AzulNoche else Color.White,
         border = if (activa) null else BorderStroke(1.dp, Borde),
     ) {
-        Text(texto, Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
-            color = if (activa) Color.White else Texto, fontSize = 13.sp, lineHeight = 16.sp)
+        Text(
+            texto, Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
+            color = when {
+                activa -> Color.White
+                !habilitada -> TextoSecundario
+                else -> Texto
+            },
+            fontSize = 13.sp,
+            lineHeight = 16.sp,
+            maxLines = if (unaLinea) 1 else Int.MAX_VALUE,
+            overflow = if (unaLinea) TextOverflow.Ellipsis else TextOverflow.Clip,
+            textAlign = if (unaLinea) TextAlign.Center else TextAlign.Start,
+        )
     }
 }
 

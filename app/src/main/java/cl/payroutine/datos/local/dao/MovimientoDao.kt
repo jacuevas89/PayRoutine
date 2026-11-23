@@ -19,6 +19,12 @@ interface MovimientoDao {
     @Query("DELETE FROM Movimiento")
     suspend fun eliminarTodos()
 
+    @Query("DELETE FROM Movimiento WHERE id = :id")
+    suspend fun eliminarPorId(id: Int): Int
+
+    @Query("SELECT * FROM Movimiento WHERE id = :id")
+    suspend fun buscarPorId(id: Int): Movimiento?
+
     @Query("SELECT * FROM Movimiento ORDER BY fecha DESC, id DESC")
     fun observarTodos(): Flow<List<Movimiento>>
 
