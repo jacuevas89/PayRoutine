@@ -16,13 +16,14 @@ class ReceptorRecordatorios : BroadcastReceiver() {
         val recordatorios = (context.applicationContext as PayRoutineApplication).recordatorios
         CoroutineScope(Dispatchers.IO).launch {
             try {
-                if (intent.action == AVISO_MOVIMIENTO) {
-                    recordatorios.recibirAviso(
+                when (intent.action) {
+                    AVISO_MOVIMIENTO -> recordatorios.recibirAviso(
                         intent.getStringExtra(EXTRA_PROGRAMACION),
                         intent.getLongExtra(EXTRA_DIA, Long.MIN_VALUE),
                     )
-                } else {
-                    recordatorios.restaurar()
+                    AVISO_PRESUPUESTO -> recordatorios.recibirAvisoPresupuesto(intent.getLongExtra(EXTRA_DIA, Long.MIN_VALUE))
+                    GENERAR_PRESUPUESTO -> recordatorios.restaurarPresupuesto()
+                    else -> recordatorios.restaurar()
                 }
             } catch (error: SQLiteException) {
                 Log.e("Recordatorios", "No se pudo consultar la configuración", error)

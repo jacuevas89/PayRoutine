@@ -119,7 +119,7 @@ private fun DistribucionGastos(gastos: List<GastoPorCategoria>) {
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun SelectorPeriodo(periodo: YearMonth, cerrar: () -> Unit, elegir: (YearMonth) -> Unit) {
+internal fun SelectorPeriodo(periodo: YearMonth, cerrar: () -> Unit, elegir: (YearMonth) -> Unit) {
     var anio by rememberSaveable { mutableIntStateOf(periodo.year) }
     AlertDialog(
         onDismissRequest = cerrar,

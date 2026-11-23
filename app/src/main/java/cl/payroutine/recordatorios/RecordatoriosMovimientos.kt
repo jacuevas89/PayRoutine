@@ -18,20 +18,30 @@ import androidx.core.content.ContextCompat
 import cl.payroutine.MainActivity
 import cl.payroutine.R
 import cl.payroutine.datos.local.entidad.RecordatorioMovimiento
+import cl.payroutine.datos.local.entidad.PreferenciasPresupuesto
+import cl.payroutine.datos.local.entidad.fechaAviso
+import cl.payroutine.datos.local.entidad.indice
 import cl.payroutine.datos.repositorio.RepositorioFinanzas
 import java.time.LocalDate
+import java.time.YearMonth
 import java.time.ZonedDateTime
 import java.util.UUID
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
 internal const val ABRIR_NUEVO_MOVIMIENTO = "cl.payroutine.recordatorios.ABRIR_NUEVO_MOVIMIENTO"
+internal const val ABRIR_PRESUPUESTO = "cl.payroutine.recordatorios.ABRIR_PRESUPUESTO"
 internal const val EXTRA_USUARIO = "usuario"
 internal const val AVISO_MOVIMIENTO = "cl.payroutine.recordatorios.AVISO_MOVIMIENTO"
+internal const val AVISO_PRESUPUESTO = "cl.payroutine.recordatorios.AVISO_PRESUPUESTO"
+internal const val GENERAR_PRESUPUESTO = "cl.payroutine.recordatorios.GENERAR_PRESUPUESTO"
 internal const val EXTRA_PROGRAMACION = "programacion"
 internal const val EXTRA_DIA = "dia"
 internal const val CANAL_MOVIMIENTOS = "recordatorio_movimientos"
+private const val CANAL_PRESUPUESTO = "recordatorio_presupuesto"
 private const val ID_AVISO = 91
+private const val ID_AVISO_PRESUPUESTO = 92
+private const val ID_GENERAR_PRESUPUESTO = 93
 private const val FLAGS_ALARMA = PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_ONE_SHOT
 
 internal class RecordatoriosMovimientos(
@@ -50,12 +60,14 @@ internal class RecordatoriosMovimientos(
     fun canalSilenciado(): Boolean = notificaciones.getNotificationChannel(CANAL_MOVIMIENTOS)
         ?.let { it.importance < NotificationManager.IMPORTANCE_DEFAULT || it.sound == null } ?: false
 
-    fun notificacionesHabilitadas(): Boolean {
+    fun notificacionesHabilitadas(): Boolean = notificacionesHabilitadas(CANAL_MOVIMIENTOS)
+
+    private fun notificacionesHabilitadas(canal: String): Boolean {
         if (Build.VERSION.SDK_INT >= 33 &&
             ContextCompat.checkSelfPermission(contexto, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
         ) return false
         return NotificationManagerCompat.from(contexto).areNotificationsEnabled() &&
-            notificaciones.getNotificationChannel(CANAL_MOVIMIENTOS)?.importance != NotificationManager.IMPORTANCE_NONE
+            notificaciones.getNotificationChannel(canal)?.importance != NotificationManager.IMPORTANCE_NONE
     }
 
     suspend fun actualizar(usuarioId: String, cambiar: (RecordatorioMovimiento) -> RecordatorioMovimiento) = mutex.withLock {
@@ -77,8 +89,63 @@ internal class RecordatoriosMovimientos(
     }
 
     suspend fun restaurar(siFalta: Boolean = false) = mutex.withLock {
-        if (siFalta && alarmaExistente() != null) return@withLock
-        programar(repositorio.obtenerRecordatorio(), ZonedDateTime.now())
+        val ahora = ZonedDateTime.now()
+        if (!siFalta || alarmaExistente() == null) programar(repositorio.obtenerRecordatorio(), ahora)
+        prepararPresupuesto(ahora, siFalta)
+    }
+
+    suspend fun restaurarPresupuesto() = mutex.withLock { prepararPresupuesto(ZonedDateTime.now()) }
+
+    suspend fun actualizarAvisoPresupuesto(usuarioId: String, cambiar: (PreferenciasPresupuesto) -> PreferenciasPresupuesto) =
+        mutex.withLock {
+            repositorio.actualizarPreferenciasPresupuesto(usuarioId, cambiar)
+            prepararPresupuesto(ZonedDateTime.now())
+        }
+
+    suspend fun recibirAvisoPresupuesto(dia: Long) = mutex.withLock {
+        val ahora = ZonedDateTime.now()
+        val mes = YearMonth.from(ahora)
+        repositorio.generarPresupuestoAutomatico(mes, ahora.zone)
+        val preferencias = repositorio.preferenciasPresupuesto()
+        if (preferencias?.avisoActivo == true &&
+            preferencias.ultimoMesAvisado != mes.indice() &&
+            preferencias.fechaAviso(mes, ahora).toLocalDate().toEpochDay() == dia &&
+            !ahora.isBefore(preferencias.fechaAviso(mes, ahora)) &&
+            !repositorio.existePresupuesto(mes) &&
+            notificacionesHabilitadas(CANAL_PRESUPUESTO)
+        ) {
+            publicar(
+                preferencias.usuarioId, ID_AVISO_PRESUPUESTO, CANAL_PRESUPUESTO, "Presupuesto mensual",
+                ABRIR_PRESUPUESTO, "Configura tu presupuesto",
+                "Crea el presupuesto de este mes o copia los límites del mes anterior.",
+            )
+            repositorio.actualizarPreferenciasPresupuesto(preferencias.usuarioId) { it.copy(ultimoMesAvisado = mes.indice()) }
+        }
+        prepararPresupuesto(ahora)
+    }
+
+    private suspend fun prepararPresupuesto(ahora: ZonedDateTime, conservarAviso: Boolean = false) {
+        val mes = YearMonth.from(ahora)
+        repositorio.generarPresupuestoAutomatico(mes, ahora.zone)
+        val preferencias = repositorio.preferenciasPresupuesto()
+        val existe = repositorio.existePresupuesto(mes)
+        if (preferencias?.primerMesAutomatico != null) {
+            val comienzo = mes.plusMonths(1).atDay(1).atTime(0, 5).atZone(ahora.zone)
+            agendar(generarAlarma(accion = GENERAR_PRESUPUESTO, id = ID_GENERAR_PRESUPUESTO), comienzo)
+        } else cancelarAlarma(GENERAR_PRESUPUESTO, ID_GENERAR_PRESUPUESTO)
+        if (preferencias?.avisoActivo != true) {
+            cancelarAlarma(AVISO_PRESUPUESTO, ID_AVISO_PRESUPUESTO)
+            notificaciones.cancel(ID_AVISO_PRESUPUESTO)
+            return
+        }
+        if (existe) notificaciones.cancel(ID_AVISO_PRESUPUESTO)
+        if (conservarAviso && !existe && alarmaExistente(AVISO_PRESUPUESTO, ID_AVISO_PRESUPUESTO) != null) return
+        val fecha = preferencias.fechaAviso(mes, ahora)
+        val siguiente = if (existe || preferencias.ultimoMesAvisado == mes.indice() || !fecha.isAfter(ahora)) {
+            preferencias.fechaAviso(mes.plusMonths(1), ahora)
+        } else fecha
+        val intencion = intencionAlarma(AVISO_PRESUPUESTO).putExtra(EXTRA_DIA, siguiente.toLocalDate().toEpochDay())
+        agendar(generarAlarma(AVISO_PRESUPUESTO, ID_AVISO_PRESUPUESTO, intencion), siguiente)
     }
 
     suspend fun recibirAviso(idProgramacion: String?, dia: Long) = mutex.withLock {
@@ -106,22 +173,26 @@ internal class RecordatoriosMovimientos(
 
     suspend fun eliminarDatosLocales() = mutex.withLock {
         cancelarAlarma()
+        cancelarAlarma(AVISO_PRESUPUESTO, ID_AVISO_PRESUPUESTO)
+        cancelarAlarma(GENERAR_PRESUPUESTO, ID_GENERAR_PRESUPUESTO)
         notificaciones.cancelAll()
         try {
             repositorio.eliminarTodosLosDatos()
         } catch (error: SQLiteException) {
             programar(repositorio.obtenerRecordatorio(), ZonedDateTime.now())
+            prepararPresupuesto(ZonedDateTime.now())
             throw error
         }
     }
 
-    private fun intencionAlarma() = Intent(contexto, ReceptorRecordatorios::class.java).setAction(AVISO_MOVIMIENTO)
+    private fun intencionAlarma(accion: String = AVISO_MOVIMIENTO) =
+        Intent(contexto, ReceptorRecordatorios::class.java).setAction(accion)
 
-    private fun alarmaExistente(): PendingIntent? =
-        PendingIntent.getBroadcast(contexto, ID_AVISO, intencionAlarma(), FLAGS_ALARMA or PendingIntent.FLAG_NO_CREATE)
+    private fun alarmaExistente(accion: String = AVISO_MOVIMIENTO, id: Int = ID_AVISO): PendingIntent? =
+        PendingIntent.getBroadcast(contexto, id, intencionAlarma(accion), FLAGS_ALARMA or PendingIntent.FLAG_NO_CREATE)
 
-    private fun cancelarAlarma() {
-        alarmaExistente()?.let {
+    private fun cancelarAlarma(accion: String = AVISO_MOVIMIENTO, id: Int = ID_AVISO) {
+        alarmaExistente(accion, id)?.let {
             alarmas.cancel(it)
             it.cancel()
         }
@@ -136,7 +207,13 @@ internal class RecordatoriosMovimientos(
         val intent = intencionAlarma()
             .putExtra(EXTRA_PROGRAMACION, configuracion.programacionId)
             .putExtra(EXTRA_DIA, siguiente.toLocalDate().toEpochDay())
-        val alarma = PendingIntent.getBroadcast(contexto, ID_AVISO, intent, FLAGS_ALARMA or PendingIntent.FLAG_UPDATE_CURRENT)
+        agendar(generarAlarma(AVISO_MOVIMIENTO, ID_AVISO, intent), siguiente)
+    }
+
+    private fun generarAlarma(accion: String, id: Int, intent: Intent = intencionAlarma(accion)): PendingIntent =
+        PendingIntent.getBroadcast(contexto, id, intent, FLAGS_ALARMA or PendingIntent.FLAG_UPDATE_CURRENT)
+
+    private fun agendar(alarma: PendingIntent, siguiente: ZonedDateTime) {
         val instante = siguiente.toInstant().toEpochMilli()
         if (alarmasExactasHabilitadas()) {
             try {
@@ -154,9 +231,17 @@ internal class RecordatoriosMovimientos(
         }
     }
 
-    private fun publicar(usuarioId: String) {
+    private fun publicar(
+        usuarioId: String,
+        id: Int = ID_AVISO,
+        canal: String = CANAL_MOVIMIENTOS,
+        nombreCanal: String = "Recordatorio de movimientos",
+        destino: String = ABRIR_NUEVO_MOVIMIENTO,
+        titulo: String = "Registra tus movimientos",
+        mensaje: String = "Toca para anotar un gasto o un ingreso en PayRoutine.",
+    ) {
         notificaciones.createNotificationChannel(
-            NotificationChannel(CANAL_MOVIMIENTOS, "Recordatorio de movimientos", NotificationManager.IMPORTANCE_DEFAULT).apply {
+            NotificationChannel(canal, nombreCanal, NotificationManager.IMPORTANCE_DEFAULT).apply {
                 setSound(
                     Settings.System.DEFAULT_NOTIFICATION_URI,
                     AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_NOTIFICATION).build(),
@@ -164,19 +249,19 @@ internal class RecordatoriosMovimientos(
             },
         )
         val intent = Intent(contexto, MainActivity::class.java)
-            .setAction(ABRIR_NUEVO_MOVIMIENTO)
+            .setAction(destino)
             .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
             .putExtra(EXTRA_USUARIO, usuarioId)
         val abrir = PendingIntent.getActivity(
-            contexto, ID_AVISO, intent, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_CANCEL_CURRENT,
+            contexto, id, intent, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_CANCEL_CURRENT,
         )
-        val notificacion = NotificationCompat.Builder(contexto, CANAL_MOVIMIENTOS)
+        val notificacion = NotificationCompat.Builder(contexto, canal)
             .setSmallIcon(R.drawable.icono_bell)
-            .setContentTitle("Registra tus movimientos")
-            .setContentText("Toca para anotar un gasto o un ingreso en PayRoutine.")
+            .setContentTitle(titulo)
+            .setContentText(mensaje)
             .setContentIntent(abrir)
             .setAutoCancel(true)
             .build()
-        notificaciones.notify(ID_AVISO, notificacion)
+        notificaciones.notify(id, notificacion)
     }
 }

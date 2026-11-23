@@ -32,6 +32,24 @@ class NavegacionPayRoutineTest {
     val compose = createAndroidComposeRule<ComponentActivity>()
 
     @Test
+    fun avisoMensualAbrePresupuesto() {
+        compose.setContent {
+            PayRoutineTheme {
+                NavegacionPayRoutine(
+                    estado = EstadoPerfil(cargando = false, usuario = usuario),
+                    inicio = inicio,
+                    reintentarCarga = {},
+                    usuarioDelAviso = usuario.id,
+                    avisoDePresupuesto = true,
+                    registrar = { _, _ -> },
+                )
+            }
+        }
+        ver("Presupuesto mensual")
+        ver("Definir presupuesto")
+    }
+
+    @Test
     fun primerUsoVuelveABienvenidaYPerfilGuardadoAbreInicio() {
         val estado = mutableStateOf(EstadoPerfil(cargando = false))
         compose.setContent {
@@ -217,15 +235,9 @@ class NavegacionPayRoutineTest {
         ver("Hola, Mari")
 
         tocar("Presupuesto")
-        tocar("Ocio")
-        ver("Superaste tu presupuesto")
-        tocar("Ajustar presupuesto")
-        ver("Editar presupuesto")
-        atrasAndroid()
-        ver("Superaste tu presupuesto")
-        volver()
         ver("Presupuesto mensual")
-        tocar("Editar")
+        ver("Sin presupuesto")
+        tocar("Definir presupuesto")
         ver("Editar presupuesto")
         volver()
         ver("Presupuesto mensual")

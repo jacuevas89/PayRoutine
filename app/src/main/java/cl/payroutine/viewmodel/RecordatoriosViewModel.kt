@@ -7,6 +7,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import cl.payroutine.PayRoutineApplication
 import cl.payroutine.datos.local.entidad.RecordatorioMovimiento
+import cl.payroutine.datos.local.entidad.PreferenciasPresupuesto
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
@@ -25,6 +26,9 @@ internal class RecordatoriosViewModel(aplicacion: Application) : AndroidViewMode
 
     fun actualizar(usuarioId: String, cambiar: (RecordatorioMovimiento) -> RecordatorioMovimiento) =
         ejecutar { recordatorios.actualizar(usuarioId, cambiar) }
+
+    fun actualizarPresupuesto(usuarioId: String, cambiar: (PreferenciasPresupuesto) -> PreferenciasPresupuesto) =
+        ejecutar { recordatorios.actualizarAvisoPresupuesto(usuarioId, cambiar) }
 
     private fun ejecutar(operacion: suspend () -> Unit) {
         viewModelScope.launch {

@@ -10,7 +10,9 @@ import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectableGroup
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -27,10 +29,12 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import cl.payroutine.datos.local.entidad.RecordatorioMovimiento
 import cl.payroutine.datos.local.entidad.RecurrenciaRecordatorio
+import cl.payroutine.datos.local.entidad.PreferenciasPresupuesto
 import cl.payroutine.recordatorios.CANAL_MOVIMIENTOS
 import cl.payroutine.ui.theme.RojoGasto
 import java.time.Instant
 import java.time.LocalDate
+import java.time.LocalTime
 import java.time.ZoneOffset
 import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
@@ -40,6 +44,7 @@ private val idiomaSelectores = Locale.forLanguageTag("es-ES")
 private val formatoHora = DateTimeFormatter.ofPattern("HH:mm", idiomaSelectores)
 private val formatoDia = DateTimeFormatter.ofPattern("EEEE", idiomaSelectores)
 private val formatoProximo = DateTimeFormatter.ofPattern("EEEE d 'de' MMMM, HH:mm", idiomaSelectores)
+private enum class HorarioRecordatorio { Movimientos, Presupuesto }
 
 @OptIn(ExperimentalLayoutApi::class, ExperimentalMaterial3Api::class)
 @Composable
@@ -50,6 +55,8 @@ internal fun PantallaRecordatorios(
     alarmasExactasHabilitadas: () -> Boolean,
     canalSilenciado: () -> Boolean,
     actualizar: ((RecordatorioMovimiento) -> RecordatorioMovimiento) -> Unit,
+    presupuesto: PreferenciasPresupuesto,
+    actualizarPresupuesto: ((PreferenciasPresupuesto) -> PreferenciasPresupuesto) -> Unit,
     volver: () -> Unit,
 ) {
     val contexto = LocalContext.current
@@ -75,10 +82,16 @@ internal fun PantallaRecordatorios(
         onDispose { ciclo.removeObserver(observador) }
     }
 
-    var elegirHora by rememberSaveable { mutableStateOf(false) }
+    var elegirHora by rememberSaveable { mutableStateOf<HorarioRecordatorio?>(null) }
+    var elegirDia by rememberSaveable { mutableStateOf(false) }
     var repetirDesdeFecha by rememberSaveable { mutableStateOf<RecurrenciaRecordatorio?>(null) }
     val fecha = configuracion.fechaInicial?.let(LocalDate::ofEpochDay)
     val siguiente = if (configuracion.activo) configuracion.siguienteAviso(ZonedDateTime.now()) else null
+    fun pedirNotificaciones() {
+        if (Build.VERSION.SDK_INT >= 33 &&
+            ContextCompat.checkSelfPermission(contexto, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+        ) solicitud.launch(Manifest.permission.POST_NOTIFICATIONS)
+    }
 
     Column(Modifier.fillMaxSize()) {
         Cabecera("Recordatorios", volver)
@@ -94,13 +107,11 @@ internal fun PantallaRecordatorios(
                         modifier = Modifier.semantics { contentDescription = "Activar recordatorios" },
                         onCheckedChange = { activo ->
                             actualizar { it.copy(activo = activo) }
-                            if (activo && Build.VERSION.SDK_INT >= 33 &&
-                                ContextCompat.checkSelfPermission(contexto, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
-                            ) solicitud.launch(Manifest.permission.POST_NOTIFICATIONS)
+                            if (activo) pedirNotificaciones()
                         },
                     )
                 }
-                FilaConfiguracion("Horario", configuracion.hora.format(formatoHora)) { elegirHora = true }
+                FilaConfiguracion("Horario", configuracion.hora.format(formatoHora)) { elegirHora = HorarioRecordatorio.Movimientos }
                 Destacado("Repetir")
                 FlowRow(
                     Modifier.selectableGroup(),
@@ -141,7 +152,27 @@ internal fun PantallaRecordatorios(
                     }
                 }
             }
-            if (configuracion.activo && !preciso && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            Tarjeta(Modifier.fillMaxWidth(), espacio = 12) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Column(Modifier.weight(1f)) {
+                        Destacado("Aviso mensual de presupuesto")
+                        Etiqueta("Recibe un aviso si todavía no tienes un presupuesto para el mes.")
+                    }
+                    Switch(
+                        checked = presupuesto.avisoActivo,
+                        modifier = Modifier.semantics { contentDescription = "Activar aviso de presupuesto" },
+                        onCheckedChange = { activo ->
+                            actualizarPresupuesto { it.copy(avisoActivo = activo) }
+                            if (activo) pedirNotificaciones()
+                        },
+                    )
+                }
+                FilaConfiguracion("Día del mes", presupuesto.diaAviso.toString()) { elegirDia = true }
+                val hora = LocalTime.of(presupuesto.minutoAviso / 60, presupuesto.minutoAviso % 60)
+                FilaConfiguracion("Horario del aviso", hora.format(formatoHora)) { elegirHora = HorarioRecordatorio.Presupuesto }
+                Etiqueta("Si el día elegido no existe, recibirás el aviso el último día del mes.")
+            }
+            if ((configuracion.activo || presupuesto.avisoActivo) && !preciso && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                 Tarjeta(Modifier.fillMaxWidth(), espacio = 8) {
                     Destacado("Horario aproximado")
                     Etiqueta("Para recibir el aviso a la hora elegida, permite que PayRoutine programe alarmas exactas.")
@@ -172,21 +203,44 @@ internal fun PantallaRecordatorios(
         }
     }
 
-    if (elegirHora) SelectoresEnEspanol {
-        val reloj = rememberTimePickerState(configuracion.hora.hour, configuracion.hora.minute, is24Hour = true)
+    elegirHora?.let { tipo -> SelectoresEnEspanol {
+        val minuto = if (tipo == HorarioRecordatorio.Presupuesto) presupuesto.minutoAviso else configuracion.minutoDelDia
+        val reloj = rememberTimePickerState(minuto / 60, minuto % 60, is24Hour = true)
         AlertDialog(
-            onDismissRequest = { elegirHora = false },
+            onDismissRequest = { elegirHora = null },
             title = { Text("Elegir horario") },
             text = { SelectoresEnEspanol { TimeInput(reloj) } },
             confirmButton = {
                 TextButton(onClick = {
-                    actualizar { it.copy(minutoDelDia = reloj.hour * 60 + reloj.minute) }
-                    elegirHora = false
+                    val nuevoMinuto = reloj.hour * 60 + reloj.minute
+                    if (tipo == HorarioRecordatorio.Presupuesto) actualizarPresupuesto { it.copy(minutoAviso = nuevoMinuto) }
+                    else actualizar { it.copy(minutoDelDia = nuevoMinuto) }
+                    elegirHora = null
                 }) { Text("Guardar") }
             },
-            dismissButton = { TextButton(onClick = { elegirHora = false }) { Text("Cancelar") } },
+            dismissButton = { TextButton(onClick = { elegirHora = null }) { Text("Cancelar") } },
         )
-    }
+    } }
+
+    if (elegirDia) AlertDialog(
+        onDismissRequest = { elegirDia = false },
+        title = { Text("Elegir día del mes") },
+        text = {
+            FlowRow(
+                Modifier.heightIn(max = 320.dp).verticalScroll(rememberScrollState()).selectableGroup(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                (1..31).forEach { dia ->
+                    Pildora(dia.toString(), presupuesto.diaAviso == dia) {
+                        actualizarPresupuesto { it.copy(diaAviso = dia) }
+                        elegirDia = false
+                    }
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = { elegirDia = false }) { Text("Cancelar") } },
+    )
 
     repetirDesdeFecha?.let { repeticion -> SelectoresEnEspanol {
         val hoy = LocalDate.now()
@@ -246,7 +300,7 @@ private fun SelectoresEnEspanol(contenido: @Composable () -> Unit) {
 }
 
 @Composable
-private fun FilaConfiguracion(etiqueta: String, valor: String, abrir: () -> Unit) {
+internal fun FilaConfiguracion(etiqueta: String, valor: String, abrir: () -> Unit) {
     Row(
         Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.SpaceBetween,

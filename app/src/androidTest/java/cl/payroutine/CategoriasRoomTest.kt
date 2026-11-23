@@ -4,6 +4,7 @@ import androidx.room.Room
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import cl.payroutine.datos.local.BaseDatosPayRoutine
+import cl.payroutine.datos.local.MIGRACION_5_6
 import cl.payroutine.datos.local.entidad.Categoria
 import cl.payroutine.datos.local.entidad.Movimiento
 import cl.payroutine.datos.local.entidad.Presupuesto
@@ -52,7 +53,7 @@ class CategoriasRoomTest {
     @Test
     fun catalogoPersisteSinDuplicadosConInicializacionesSimultaneas() = runBlocking {
         val nombreBase = "rf41-${UUID.randomUUID()}.db"
-        var base = Room.databaseBuilder(contexto, BaseDatosPayRoutine::class.java, nombreBase).build()
+        var base = Room.databaseBuilder(contexto, BaseDatosPayRoutine::class.java, nombreBase).addMigrations(MIGRACION_5_6).build()
         try {
             val repositorio = RepositorioFinanzas(base)
             assertTrue(repositorio.observarCategorias().first().isEmpty())
@@ -71,11 +72,11 @@ class CategoriasRoomTest {
             assertTrue(repositorio.observarCategoriasConUso().first().all { it.cantidadMovimientos == 0 })
 
             base.close()
-            base = Room.databaseBuilder(contexto, BaseDatosPayRoutine::class.java, nombreBase).build()
+            base = Room.databaseBuilder(contexto, BaseDatosPayRoutine::class.java, nombreBase).addMigrations(MIGRACION_5_6).build()
             val reabierto = RepositorioFinanzas(base)
             reabierto.prepararCategoriasIniciales()
             assertEquals(categorias, reabierto.observarCategorias().first())
-            assertEquals(5, base.openHelper.readableDatabase.version)
+            assertEquals(6, base.openHelper.readableDatabase.version)
         } finally {
             base.close()
             contexto.deleteDatabase(nombreBase)
