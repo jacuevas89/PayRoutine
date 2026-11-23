@@ -210,6 +210,7 @@ class NavegacionPayRoutineTest {
         atrasAndroid()
         tocar("Consejos de ahorro")
         ver("Anota tus gastos hormiga")
+        ver("Ahorra apenas recibas tu ingreso")
         volver()
         ver("Mari")
         volver()
@@ -260,6 +261,44 @@ class NavegacionPayRoutineTest {
                 NavegacionPayRoutine(EstadoPerfil(cargando = false, usuario = usuario), inicio, {}) { _, _ -> }
             }
         }
+    }
+
+    @Test
+    fun resumenPermiteElegirMesYAnioYReflejaCambiosSinSalir() {
+        val datos = mutableStateOf(inicio)
+        compose.setContent {
+            PayRoutineTheme {
+                NavegacionPayRoutine(EstadoPerfil(cargando = false, usuario = usuario), datos.value, {}) { _, _ -> }
+            }
+        }
+        tocar("Resumen")
+        ver("Noviembre 2026")
+        ver("Alimentación")
+        ver("Transporte")
+        compose.onNodeWithContentDescription("Mes anterior").performClick()
+        ver("Octubre 2026")
+        ver("No hay movimientos registrados en este período.")
+        compose.onAllNodesWithText(montoEnPantalla(0)).assertCountEquals(3)
+        ver("No hay gastos registrados en este período.")
+
+        compose.onNodeWithContentDescription("Elegir mes y año").performClick()
+        compose.onNodeWithContentDescription("Año anterior").performClick()
+        tocar("Noviembre")
+        ver("Noviembre 2025")
+        ver("No hay movimientos registrados en este período.")
+
+        compose.onNodeWithContentDescription("Elegir mes y año").performClick()
+        compose.onNodeWithContentDescription("Año siguiente").performClick()
+        tocar("Noviembre")
+        ver("Noviembre 2026")
+        ver("Alimentación")
+        compose.runOnIdle {
+            datos.value = calcularInicio(inicio.fecha, emptyList(), emptyList())
+        }
+        ver("Noviembre 2026")
+        ver("No hay movimientos registrados en este período.")
+        atrasAndroid()
+        ver("Hola, Mari")
     }
 
     @Test

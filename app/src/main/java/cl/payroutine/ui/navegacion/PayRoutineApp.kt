@@ -236,7 +236,7 @@ private fun NavegacionPrincipal(
                         verCuota = { abrir(origen, DETALLE_CUOTA) },
                     )
                 }
-                composable(Seccion.Resumen.ruta) { PantallaResumen() }
+                composable(Seccion.Resumen.ruta) { PantallaResumen(datosActuales) }
                 composable(NUEVO_MOVIMIENTO) { origen ->
                     val registro = viewModelDelDestino<RegistroMovimientoViewModel>(origen)
                     val estadoRegistro by registro.estado.collectAsState()

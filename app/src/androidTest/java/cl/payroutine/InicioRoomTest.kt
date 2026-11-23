@@ -8,13 +8,16 @@ import cl.payroutine.datos.local.entidad.Categoria
 import cl.payroutine.datos.local.entidad.Movimiento
 import cl.payroutine.datos.local.entidad.PagoPendiente
 import cl.payroutine.datos.local.entidad.TipoMovimiento
+import cl.payroutine.datos.repositorio.NuevoMovimiento
 import cl.payroutine.datos.repositorio.RepositorioFinanzas
 import cl.payroutine.viewmodel.DatosInicio
 import cl.payroutine.viewmodel.FechaLocal
+import cl.payroutine.viewmodel.calcularResumenMensual
 import cl.payroutine.viewmodel.observarInicio
 import java.math.BigDecimal
 import java.time.Instant
 import java.time.LocalDate
+import java.time.YearMonth
 import java.time.ZoneId
 import java.util.Date
 import kotlinx.coroutines.cancelAndJoin
@@ -97,6 +100,31 @@ class InicioRoomTest {
             assertEquals(BigDecimal("90000.75"), actualizado.saldo)
             assertEquals(listOf("Internet", "Tarjeta de crédito", "Arriendo"), actualizado.pagosPendientes.map { it.pago.descripcion })
 
+            val enero = YearMonth.of(2026, 1)
+            val diciembre = calcularResumenMensual(actualizado.movimientos, enero.minusMonths(1), zona)
+            assertEquals(BigDecimal("20000.0"), diciembre.importes.gastos)
+            assertEquals(BigDecimal("0"), diciembre.importes.ingresos)
+            assertEquals("Compras", diciembre.distribucion.single().categoria)
+
+            val transporte = repositorio.insertar(Categoria(nombre = "Transporte", tipo = TipoMovimiento.Gasto)).toInt()
+            val pasaje = NuevoMovimiento("Pasaje", TipoMovimiento.Gasto, 10000, LocalDate.of(2026, 1, 10), transporte)
+            val idPasaje = repositorio.registrarMovimiento(pasaje).toInt()
+            val conPasaje = esperar { it.movimientos.any { fila -> fila.movimiento.id == idPasaje } }
+            val resumenEnero = calcularResumenMensual(conPasaje.movimientos, enero, zona)
+            assertEquals(conPasaje.saldo, resumenEnero.importes.saldo)
+            assertEquals(BigDecimal("40000.0"), resumenEnero.importes.gastos)
+            assertEquals(listOf("Compras", "Transporte"), resumenEnero.distribucion.map { it.categoria })
+            assertEquals(listOf(BigDecimal("0.75"), BigDecimal("0.25")), resumenEnero.distribucion.map { it.proporcion })
+
+            assertTrue(repositorio.editarMovimiento(idPasaje, pasaje.copy(monto = 30000)))
+            val conEdicion = esperar { it.gastos == BigDecimal("60000.0") }
+            assertTrue(calcularResumenMensual(conEdicion.movimientos, enero, zona).distribucion.all {
+                it.proporcion == BigDecimal("0.5")
+            })
+            assertEquals(1, repositorio.eliminarMovimiento(idPasaje))
+            val sinPasaje = esperar { it.movimientos.none { fila -> fila.movimiento.id == idPasaje } }
+            assertEquals("Compras", calcularResumenMensual(sinPasaje.movimientos, enero, zona).distribucion.single().categoria)
+
             repositorio.actualizar(venceHoy.copy(id = idHoy, pagado = true))
             repositorio.actualizar(proximo.copy(id = idProximo, pagado = true))
             repositorio.actualizar(finDeMes.copy(id = idFinDeMes, pagado = true))
@@ -104,6 +132,9 @@ class InicioRoomTest {
             fechas.value = fechas.value.copy(hoy = LocalDate.of(2026, 2, 1))
             val febrero = esperar { it.fecha.hoy.monthValue == 2 }
             assertEquals(BigDecimal.ZERO, febrero.saldo)
+            val resumenVacio = calcularResumenMensual(febrero.movimientos, enero.plusMonths(1), zona)
+            assertFalse(resumenVacio.tieneMovimientos)
+            assertTrue(resumenVacio.distribucion.isEmpty())
             assertEquals("Seguro", febrero.pagosPendientes.single().pago.descripcion)
             assertEquals(0L, febrero.pagosPendientes.single().diasParaVencer)
             assertEquals(3, febrero.recientes.size)
