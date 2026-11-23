@@ -19,6 +19,8 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.Role
 import cl.payroutine.R
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import cl.payroutine.ui.theme.*
@@ -188,16 +190,35 @@ internal fun BotonPrincipal(
 }
 
 @Composable
-internal fun Pildora(texto: String, activa: Boolean = false, alPulsar: (() -> Unit)? = null) {
+internal fun Pildora(
+    texto: String,
+    activa: Boolean = false,
+    modifier: Modifier = Modifier,
+    unaLinea: Boolean = false,
+    rol: Role = Role.RadioButton,
+    habilitada: Boolean = true,
+    alPulsar: (() -> Unit)? = null,
+) {
     Surface(
-        modifier = if (alPulsar == null) Modifier else Modifier.selectable(
-            activa, role = Role.RadioButton, onClick = alPulsar,
+        modifier = if (alPulsar == null) modifier else modifier.selectable(
+            activa, enabled = habilitada, role = rol, onClick = alPulsar,
         ),
         shape = CircleShape, color = if (activa) AzulNoche else Color.White,
         border = if (activa) null else BorderStroke(1.dp, Borde),
     ) {
-        Text(texto, Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
-            color = if (activa) Color.White else Texto, fontSize = 13.sp, lineHeight = 16.sp)
+        Text(
+            texto, Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
+            color = when {
+                activa -> Color.White
+                !habilitada -> TextoSecundario
+                else -> Texto
+            },
+            fontSize = 13.sp,
+            lineHeight = 16.sp,
+            maxLines = if (unaLinea) 1 else Int.MAX_VALUE,
+            overflow = if (unaLinea) TextOverflow.Ellipsis else TextOverflow.Clip,
+            textAlign = if (unaLinea) TextAlign.Center else TextAlign.Start,
+        )
     }
 }
 

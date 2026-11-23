@@ -9,6 +9,10 @@ import cl.payroutine.ui.theme.*
 internal data class AparienciaCategoria(val icono: String, val color: Color, val fondo: Color)
 
 internal fun aparienciaCategoria(categoria: Categoria): AparienciaCategoria {
+    if (!categoria.esPredefinida) {
+        return if (categoria.tipo == TipoMovimiento.Ingreso) AparienciaCategoria("coin", VerdeIngreso, FondoIngreso)
+        else AparienciaCategoria("coin", TextoSecundario, FondoSelector)
+    }
     val nombre = normalizarNombreCategoria(categoria.nombre)
     if (categoria.tipo == TipoMovimiento.Ingreso) {
         val icono = when (nombre) {

@@ -25,6 +25,31 @@ class CategoriasRoomTest {
     private val contexto = InstrumentationRegistry.getInstrumentation().targetContext
 
     @Test
+    fun crearPersonalizadasRechazaDuplicadosPorTipoInclusoEnParalelo() = runBlocking {
+        val base = Room.inMemoryDatabaseBuilder(contexto, BaseDatosPayRoutine::class.java).build()
+        val repositorio = RepositorioFinanzas(base)
+        try {
+            repositorio.prepararCategoriasIniciales()
+            assertFalse(repositorio.crearCategoriaPersonalizada("  ALIMENTACIÓN  ", TipoMovimiento.Gasto))
+            val resultados = listOf("Clases particulares", " CLASES   particulares ").map { nombre ->
+                async(Dispatchers.IO) { repositorio.crearCategoriaPersonalizada(nombre, TipoMovimiento.Gasto) }
+            }.awaitAll()
+            assertEquals(1, resultados.count { it })
+            assertTrue(repositorio.crearCategoriaPersonalizada("Clases particulares", TipoMovimiento.Ingreso))
+
+            val personalizadas = repositorio.observarCategorias().first().filterNot { it.esPredefinida }
+            assertEquals(2, personalizadas.size)
+            assertEquals(setOf(TipoMovimiento.Gasto, TipoMovimiento.Ingreso), personalizadas.map { it.tipo }.toSet())
+            repositorio.eliminarTodosLosDatos()
+            val conservadas = repositorio.observarCategorias().first()
+            assertEquals(16, conservadas.size)
+            assertTrue(conservadas.all { it.esPredefinida })
+        } finally {
+            base.close()
+        }
+    }
+
+    @Test
     fun catalogoPersisteSinDuplicadosConInicializacionesSimultaneas() = runBlocking {
         val nombreBase = "rf41-${UUID.randomUUID()}.db"
         var base = Room.databaseBuilder(contexto, BaseDatosPayRoutine::class.java, nombreBase).build()
@@ -50,7 +75,7 @@ class CategoriasRoomTest {
             val reabierto = RepositorioFinanzas(base)
             reabierto.prepararCategoriasIniciales()
             assertEquals(categorias, reabierto.observarCategorias().first())
-            assertEquals(3, base.openHelper.readableDatabase.version)
+            assertEquals(4, base.openHelper.readableDatabase.version)
         } finally {
             base.close()
             contexto.deleteDatabase(nombreBase)

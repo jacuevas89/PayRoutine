@@ -1,5 +1,6 @@
 package cl.payroutine.ui.navegacion
 
+import android.app.Application
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
@@ -12,14 +13,18 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.ViewModelProvider
 import androidx.navigation.NavBackStackEntry
 import androidx.navigation.NavType
 import androidx.navigation.navArgument
@@ -27,17 +32,21 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import cl.payroutine.datos.local.entidad.TipoMovimiento
 import cl.payroutine.datos.local.entidad.Usuario
 import cl.payroutine.ui.pantallas.*
 import cl.payroutine.ui.theme.*
 import cl.payroutine.viewmodel.DatosInicio
 import cl.payroutine.viewmodel.CategoriasViewModel
+import cl.payroutine.viewmodel.EliminarMovimientoViewModel
 import cl.payroutine.viewmodel.EstadoCategorias
 import cl.payroutine.viewmodel.EstadoBorrado
 import cl.payroutine.viewmodel.EstadoEdicionPerfil
+import cl.payroutine.viewmodel.EstadoEliminacionMovimiento
 import cl.payroutine.viewmodel.EstadoPerfil
 import cl.payroutine.viewmodel.FinanzasViewModel
 import cl.payroutine.viewmodel.PerfilViewModel
+import cl.payroutine.viewmodel.RegistroMovimientoViewModel
 
 private const val NUEVO_MOVIMIENTO = "nuevo-movimiento"
 private const val NUEVO_PAGO = "nuevo-pago"
@@ -54,6 +63,7 @@ private const val CALENDARIO = "calendario"
 private const val HISTORIAL_PAGOS = "historial-pagos"
 private const val DETALLE_CUOTA = "detalle-cuota"
 private const val DETALLE_MOVIMIENTO = "detalle-movimiento"
+private const val EDITAR_MOVIMIENTO = "editar-movimiento"
 
 private enum class Seccion(val ruta: String, val titulo: String, val icono: String) {
     Inicio("inicio", "Inicio", "home"),
@@ -78,6 +88,8 @@ internal fun PayRoutineApp(perfil: PerfilViewModel, finanzas: FinanzasViewModel,
         reintentarCarga = perfil::reintentarCarga,
         categorias = estadoCategorias,
         reintentarCategorias = categorias::reintentarCarga,
+        crearCategoria = categorias::crearCategoria,
+        limpiarCreacionCategoria = categorias::limpiarCreacion,
         prepararEdicion = perfil::prepararEdicion,
         guardarEdicion = perfil::guardarEdicion,
         eliminarDatos = perfil::eliminarTodosLosDatos,
@@ -97,6 +109,8 @@ internal fun NavegacionPayRoutine(
     guardarEdicion: (String, String) -> Unit = { _, _ -> },
     eliminarDatos: () -> Unit = {},
     limpiarErrorBorrado: () -> Unit = {},
+    crearCategoria: (String, TipoMovimiento) -> Unit = { _, _ -> },
+    limpiarCreacionCategoria: () -> Unit = {},
     registrar: (String, String) -> Unit,
 ) {
     val usuario = estado.usuario
@@ -109,7 +123,7 @@ internal fun NavegacionPayRoutine(
         NavegacionPrincipal(
             usuario, inicio, estado.edicion, estado.borrado,
             prepararEdicion, guardarEdicion, eliminarDatos, limpiarErrorBorrado,
-            categorias, reintentarCategorias,
+            categorias, reintentarCategorias, crearCategoria, limpiarCreacionCategoria,
         )
     }
 }
@@ -126,6 +140,8 @@ private fun NavegacionPrincipal(
     limpiarErrorBorrado: () -> Unit,
     categorias: EstadoCategorias,
     reintentarCategorias: () -> Unit,
+    crearCategoria: (String, TipoMovimiento) -> Unit,
+    limpiarCreacionCategoria: () -> Unit,
 ) {
     val navegador = rememberNavController()
     val entradaActual = navegador.currentBackStackEntryAsState().value
@@ -205,7 +221,7 @@ private fun NavegacionPrincipal(
                     )
                 }
                 composable(Seccion.Movimientos.ruta) { origen ->
-                    PantallaMovimientos(datosActuales) { abrir(origen, "$DETALLE_MOVIMIENTO/$it") }
+                    PantallaMovimientos(datosActuales, categoriasActuales) { abrir(origen, "$DETALLE_MOVIMIENTO/$it") }
                 }
                 composable(Seccion.Presupuesto.ruta) { origen ->
                     PantallaPresupuesto(
@@ -222,7 +238,43 @@ private fun NavegacionPrincipal(
                 }
                 composable(Seccion.Resumen.ruta) { PantallaResumen() }
                 composable(NUEVO_MOVIMIENTO) { origen ->
-                    PantallaNuevoMovimiento(categoriasActuales, reintentarCategorias) { volver(origen) }
+                    val registro = viewModelDelDestino<RegistroMovimientoViewModel>(origen)
+                    val estadoRegistro by registro.estado.collectAsState()
+                    LaunchedEffect(estadoRegistro.idGuardado) {
+                        if (estadoRegistro.idGuardado != null) volver(origen)
+                    }
+                    PantallaNuevoMovimiento(
+                        categoriasActuales, reintentarCategorias, estadoRegistro, registro::guardar,
+                    ) { volver(origen) }
+                }
+                composable(
+                    "$EDITAR_MOVIMIENTO/{id}",
+                    arguments = listOf(navArgument("id") { type = NavType.IntType }),
+                ) { origen ->
+                    val id = requireNotNull(origen.arguments).getInt("id")
+                    val datos = datosActuales
+                    val movimiento = datos?.movimientos?.find { it.movimiento.id == id }?.movimiento
+                    if (movimiento == null) {
+                        Column(Modifier.fillMaxSize()) {
+                            Cabecera("Editar movimiento", volver = { volver(origen) })
+                            Cuerpo(Modifier.weight(1f)) {
+                                Etiqueta(if (datos == null) "Cargando movimiento…" else "El movimiento ya no está disponible.")
+                            }
+                        }
+                    } else {
+                        val registro = viewModelDelDestino<RegistroMovimientoViewModel>(origen)
+                        val estadoRegistro by registro.estado.collectAsState()
+                        LaunchedEffect(estadoRegistro.idGuardado) {
+                            if (estadoRegistro.idGuardado != null) volver(origen)
+                        }
+                        FormularioMovimiento(
+                            estadoCategorias = categoriasActuales,
+                            reintentarCategorias = reintentarCategorias,
+                            estadoRegistro = estadoRegistro,
+                            guardar = { registro.editar(id, it) },
+                            movimientoInicial = movimiento,
+                        ) { volver(origen) }
+                    }
                 }
                 composable(NUEVO_PAGO) { origen -> PantallaNuevoPago { volver(origen) } }
                 composable(PRESUPUESTO_EXCEDIDO) { origen ->
@@ -278,7 +330,9 @@ private fun NavegacionPrincipal(
                     )
                 }
                 composable(CATEGORIAS) { origen ->
-                    PantallaCategorias(categoriasActuales, reintentarCategorias) { volver(origen) }
+                    PantallaCategorias(
+                        categoriasActuales, reintentarCategorias, crearCategoria, limpiarCreacionCategoria,
+                    ) { volver(origen) }
                 }
                 composable(CONSEJOS_AHORRO) { origen -> PantallaConsejosAhorro { volver(origen) } }
                 composable(RECORDATORIOS) { origen -> PantallaRecordatorios { volver(origen) } }
@@ -292,10 +346,30 @@ private fun NavegacionPrincipal(
                     val id = requireNotNull(entrada.arguments).getInt("id")
                     val datos = datosActuales
                     val fila = datos?.movimientos?.find { it.movimiento.id == id }
-                    PantallaDetalleMovimiento(fila, datos?.fecha?.zona) { volver(entrada) }
+                    val eliminacion = viewModelDelDestino<EliminarMovimientoViewModel>(entrada)
+                    val estadoEliminacion by eliminacion.estado.collectAsState()
+                    LaunchedEffect(estadoEliminacion) {
+                        if (estadoEliminacion == EstadoEliminacionMovimiento.Eliminado) volver(entrada)
+                    }
+                    PantallaDetalleMovimiento(
+                        fila = fila,
+                        zona = datos?.fecha?.zona,
+                        estadoEliminacion = estadoEliminacion,
+                        editar = { abrir(entrada, "$EDITAR_MOVIMIENTO/$id") },
+                        eliminar = { eliminacion.eliminar(id) },
+                        limpiarError = eliminacion::limpiarError,
+                    ) { volver(entrada) }
                 }
             }
         }
+    }
+}
+
+@Composable
+private inline fun <reified VM : AndroidViewModel> viewModelDelDestino(entrada: NavBackStackEntry): VM {
+    val aplicacion = LocalContext.current.applicationContext as Application
+    return remember(entrada) {
+        ViewModelProvider(entrada, ViewModelProvider.AndroidViewModelFactory.getInstance(aplicacion))[VM::class.java]
     }
 }
 

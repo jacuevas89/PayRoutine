@@ -36,6 +36,9 @@ interface CategoriaDao {
     @Query("SELECT * FROM Categoria")
     suspend fun obtenerTodos(): List<Categoria>
 
+    @Query("SELECT * FROM Categoria WHERE id = :id")
+    suspend fun buscarPorId(id: Int): Categoria?
+
     @Insert
     suspend fun insertarTodas(entidades: List<Categoria>)
 
