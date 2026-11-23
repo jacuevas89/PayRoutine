@@ -5,6 +5,7 @@ import androidx.room.Room
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import cl.payroutine.datos.local.BaseDatosPayRoutine
+import cl.payroutine.datos.local.MIGRACION_5_6
 import cl.payroutine.datos.local.entidad.Movimiento
 import cl.payroutine.datos.local.entidad.TipoMovimiento
 import cl.payroutine.datos.repositorio.MONTO_MAXIMO_EXACTO
@@ -77,7 +78,7 @@ class RegistroMovimientosRoomTest {
     @Test
     fun registraAmbosTiposActualizaInicioYContadoresYPersisteAlReabrir() = runBlocking {
         val nombreBase = "rf23-${UUID.randomUUID()}.db"
-        var base = Room.databaseBuilder(contexto, BaseDatosPayRoutine::class.java, nombreBase).build()
+        var base = Room.databaseBuilder(contexto, BaseDatosPayRoutine::class.java, nombreBase).addMigrations(MIGRACION_5_6).build()
         try {
             val repositorio = RepositorioFinanzas(base)
             repositorio.prepararCategoriasIniciales()
@@ -103,7 +104,7 @@ class RegistroMovimientosRoomTest {
             assertEquals(1, usos.single { it.categoria.id == hogar.id }.cantidadMovimientos)
 
             base.close()
-            base = Room.databaseBuilder(contexto, BaseDatosPayRoutine::class.java, nombreBase).build()
+            base = Room.databaseBuilder(contexto, BaseDatosPayRoutine::class.java, nombreBase).addMigrations(MIGRACION_5_6).build()
             assertEquals(filas, RepositorioFinanzas(base).observarMovimientos().first())
         } finally {
             base.close()
@@ -162,7 +163,7 @@ class RegistroMovimientosRoomTest {
                 sqlite.execSQL("INSERT INTO Usuario VALUES ('perfil-anterior', 'María Pérez', 'Mari')")
                 sqlite.version = 3
             }
-            val base = Room.databaseBuilder(contexto, BaseDatosPayRoutine::class.java, nombreBase).build()
+            val base = Room.databaseBuilder(contexto, BaseDatosPayRoutine::class.java, nombreBase).addMigrations(MIGRACION_5_6).build()
             try {
                 val repositorio = RepositorioFinanzas(base)
                 val anterior = repositorio.observarMovimientos().first().single()
@@ -175,7 +176,8 @@ class RegistroMovimientosRoomTest {
                 assertEquals(31, repositorio.observarPresupuestos().first().single().id)
                 assertEquals(7, repositorio.observarPagos().first().single().id)
                 assertEquals("perfil-anterior", repositorio.observarUsuario().first()?.id)
-                assertEquals(4, base.openHelper.readableDatabase.version)
+                assertEquals(6, base.openHelper.readableDatabase.version)
+                assertNull(repositorio.obtenerRecordatorio())
             } finally {
                 base.close()
             }

@@ -1,7 +1,6 @@
 package cl.payroutine.viewmodel
 
 import android.app.Application
-import android.app.NotificationManager
 import android.database.sqlite.SQLiteException
 import android.util.Log
 import androidx.lifecycle.AndroidViewModel
@@ -114,8 +113,7 @@ internal class PerfilViewModel(aplicacion: Application) : AndroidViewModel(aplic
         estadoInterno.update { it.copy(borrado = EstadoBorrado.Eliminando) }
         viewModelScope.launch {
             try {
-                getApplication<PayRoutineApplication>().getSystemService(NotificationManager::class.java)?.cancelAll()
-                repositorio.eliminarTodosLosDatos()
+                getApplication<PayRoutineApplication>().recordatorios.eliminarDatosLocales()
                 estadoInterno.value = EstadoPerfil(cargando = false)
             } catch (error: SQLiteException) {
                 informarErrorBorrado(error)

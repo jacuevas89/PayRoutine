@@ -4,8 +4,10 @@ import cl.payroutine.datos.local.dao.MovimientoConCategoria
 import cl.payroutine.datos.local.entidad.TipoMovimiento
 import java.text.NumberFormat
 import java.time.LocalDate
+import java.time.Month
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
+import java.time.format.TextStyle
 import java.util.Locale
 
 private val chile = Locale.forLanguageTag("es-CL")
@@ -15,6 +17,12 @@ private val formatoDiaMes = DateTimeFormatter.ofPattern("d MMM", chile)
 
 internal fun mesEnPantalla(fecha: LocalDate): String =
     formatoMes.format(fecha).replaceFirstChar { it.uppercase(chile) }
+
+internal fun nombreMesEnPantalla(mes: Month): String =
+    mes.getDisplayName(TextStyle.FULL, chile).replaceFirstChar { it.uppercase(chile) }
+
+internal fun porcentajeEnPantalla(proporcion: Number): String =
+    NumberFormat.getPercentInstance(chile).apply { maximumFractionDigits = 1 }.format(proporcion)
 
 internal fun fechaEnPantalla(fecha: LocalDate): String = formatoFecha.format(fecha)
 
