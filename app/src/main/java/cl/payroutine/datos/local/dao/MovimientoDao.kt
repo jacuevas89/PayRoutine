@@ -28,6 +28,9 @@ interface MovimientoDao {
     @Query("SELECT * FROM Movimiento ORDER BY fecha DESC, id DESC")
     fun observarTodos(): Flow<List<Movimiento>>
 
+    @Query("SELECT * FROM Movimiento WHERE fecha >= :desde AND fecha < :hasta")
+    suspend fun obtenerEntre(desde: Long, hasta: Long): List<Movimiento>
+
     @Query("""
         SELECT Movimiento.*, Categoria.nombre AS categoria
         FROM Movimiento INNER JOIN Categoria ON Categoria.id = Movimiento.categoria_id

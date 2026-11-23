@@ -51,23 +51,6 @@ internal fun PantallaAjustes(
 }
 
 @Composable
-internal fun PantallaConsejosAhorro(volver: () -> Unit) {
-    Column(Modifier.fillMaxSize()) {
-        Cabecera("Consejos de ahorro", volver)
-        Cuerpo(Modifier.weight(1f)) {
-            Etiqueta("Ideas simples para ordenar tu mes.")
-            DatosDeEjemplo.consejosAhorro.forEach { (titulo, detalle) ->
-                FilaTarjeta(titulo, detalle, "", "bulb", VerdeMarca, FondoMarca)
-            }
-        }
-        Etiqueta(
-            "Consejos generales, no son recomendaciones personalizadas.",
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
-        )
-    }
-}
-
-@Composable
 internal fun FilaAjustes(
     titulo: String,
     icono: String,

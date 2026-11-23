@@ -32,6 +32,24 @@ class NavegacionPayRoutineTest {
     val compose = createAndroidComposeRule<ComponentActivity>()
 
     @Test
+    fun avisoMensualAbrePresupuesto() {
+        compose.setContent {
+            PayRoutineTheme {
+                NavegacionPayRoutine(
+                    estado = EstadoPerfil(cargando = false, usuario = usuario),
+                    inicio = inicio,
+                    reintentarCarga = {},
+                    usuarioDelAviso = usuario.id,
+                    avisoDePresupuesto = true,
+                    registrar = { _, _ -> },
+                )
+            }
+        }
+        ver("Presupuesto mensual")
+        ver("Definir presupuesto")
+    }
+
+    @Test
     fun primerUsoVuelveABienvenidaYPerfilGuardadoAbreInicio() {
         val estado = mutableStateOf(EstadoPerfil(cargando = false))
         compose.setContent {
@@ -210,21 +228,16 @@ class NavegacionPayRoutineTest {
         atrasAndroid()
         tocar("Consejos de ahorro")
         ver("Anota tus gastos hormiga")
+        ver("Ahorra apenas recibas tu ingreso")
         volver()
         ver("Mari")
         volver()
         ver("Hola, Mari")
 
         tocar("Presupuesto")
-        tocar("Ocio")
-        ver("Superaste tu presupuesto")
-        tocar("Ajustar presupuesto")
-        ver("Editar presupuesto")
-        atrasAndroid()
-        ver("Superaste tu presupuesto")
-        volver()
         ver("Presupuesto mensual")
-        tocar("Editar")
+        ver("Sin presupuesto")
+        tocar("Definir presupuesto")
         ver("Editar presupuesto")
         volver()
         ver("Presupuesto mensual")
@@ -260,6 +273,63 @@ class NavegacionPayRoutineTest {
                 NavegacionPayRoutine(EstadoPerfil(cargando = false, usuario = usuario), inicio, {}) { _, _ -> }
             }
         }
+    }
+
+    @Test
+    fun avisoDeMovimientosAbreFormularioYSeConsumeUnaVez() {
+        val aviso = mutableStateOf<String?>(usuario.id)
+        compose.setContent {
+            PayRoutineTheme {
+                NavegacionPayRoutine(
+                    EstadoPerfil(cargando = false, usuario = usuario), inicio, {},
+                    usuarioDelAviso = aviso.value,
+                    consumirAviso = { aviso.value = null },
+                ) { _, _ -> }
+            }
+        }
+        ver("Nuevo gasto")
+        tocar("Ingreso")
+        ver("Nuevo ingreso")
+        atrasAndroid()
+        ver("Hola, Mari")
+    }
+
+    @Test
+    fun resumenPermiteElegirMesYAnioYReflejaCambiosSinSalir() {
+        val datos = mutableStateOf(inicio)
+        compose.setContent {
+            PayRoutineTheme {
+                NavegacionPayRoutine(EstadoPerfil(cargando = false, usuario = usuario), datos.value, {}) { _, _ -> }
+            }
+        }
+        tocar("Resumen")
+        ver("Noviembre 2026")
+        ver("Alimentación")
+        ver("Transporte")
+        compose.onNodeWithContentDescription("Mes anterior").performClick()
+        ver("Octubre 2026")
+        ver("No hay movimientos registrados en este período.")
+        compose.onAllNodesWithText(montoEnPantalla(0)).assertCountEquals(3)
+        ver("No hay gastos registrados en este período.")
+
+        compose.onNodeWithContentDescription("Elegir mes y año").performClick()
+        compose.onNodeWithContentDescription("Año anterior").performClick()
+        tocar("Noviembre")
+        ver("Noviembre 2025")
+        ver("No hay movimientos registrados en este período.")
+
+        compose.onNodeWithContentDescription("Elegir mes y año").performClick()
+        compose.onNodeWithContentDescription("Año siguiente").performClick()
+        tocar("Noviembre")
+        ver("Noviembre 2026")
+        ver("Alimentación")
+        compose.runOnIdle {
+            datos.value = calcularInicio(inicio.fecha, emptyList(), emptyList())
+        }
+        ver("Noviembre 2026")
+        ver("No hay movimientos registrados en este período.")
+        atrasAndroid()
+        ver("Hola, Mari")
     }
 
     @Test
