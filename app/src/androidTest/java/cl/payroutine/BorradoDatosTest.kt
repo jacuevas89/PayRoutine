@@ -34,7 +34,7 @@ class BorradoDatosTest {
                 repositorio.registrarUsuario("María Pérez", "Mari")
                 val usuario = requireNotNull(repositorio.observarUsuario().first())
                 val categoriasIniciales = repositorio.observarCategorias().first()
-                assertEquals(9, categoriasIniciales.size)
+                assertEquals(16, categoriasIniciales.size)
                 assertTrue(categoriasIniciales.all { it.esPredefinida })
                 val categoriaFaltante = categoriasIniciales.single { it.nombre == "Otros" }
                 repositorio.eliminar(categoriaFaltante)
@@ -77,15 +77,15 @@ class BorradoDatosTest {
                 val repositorio = RepositorioFinanzas(reabierta)
                 assertNull(repositorio.observarUsuario().first())
                 val categorias = repositorio.observarCategorias().first()
-                assertEquals(9, categorias.size)
+                assertEquals(16, categorias.size)
                 assertTrue(categorias.all { it.esPredefinida })
                 assertTrue(categorias.containsAll(predefinidasConservadas))
                 assertEquals(
-                    setOf("Alimentación", "Transporte", "Hogar", "Servicios", "Ocio", "Salud", "Otros"),
+                    setOf("Alimentación", "Transporte", "Hogar", "Servicios", "Ocio", "Salud", "Otros", "Educación", "Vestuario", "Mascotas"),
                     categorias.filter { it.tipo == TipoMovimiento.Gasto }.map { it.nombre }.toSet(),
                 )
                 assertEquals(
-                    setOf("Sueldo", "Freelance"),
+                    setOf("Sueldo", "Freelance", "Ventas", "Arriendos", "Pensiones", "Otros ingresos"),
                     categorias.filter { it.tipo == TipoMovimiento.Ingreso }.map { it.nombre }.toSet(),
                 )
                 assertTrue(repositorio.observarMovimientos().first().isEmpty())

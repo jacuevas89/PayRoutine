@@ -203,7 +203,7 @@ class NavegacionPayRoutineTest {
         atrasAndroid()
         compose.onNodeWithContentDescription("Ajustes").performClick()
         tocar("Categorías")
-        ver("Nueva categoría")
+        ver("Ingresos")
         volver()
         tocar("Recordatorios")
         ver("Activar recordatorios")

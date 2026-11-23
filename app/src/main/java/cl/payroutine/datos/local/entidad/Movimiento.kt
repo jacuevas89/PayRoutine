@@ -25,4 +25,5 @@ data class Movimiento(
     val fecha: Date,
     @ColumnInfo(name = "categoria_id") val categoriaId: Int,
     val nota: String? = null,
+    @ColumnInfo(defaultValue = "''") val nombre: String = "",
 )

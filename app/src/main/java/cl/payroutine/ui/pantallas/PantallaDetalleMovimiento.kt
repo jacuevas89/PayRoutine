@@ -1,22 +1,41 @@
 package cl.payroutine.ui.pantallas
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.*
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.DialogProperties
 import cl.payroutine.datos.local.dao.MovimientoConCategoria
 import cl.payroutine.ui.theme.*
+import cl.payroutine.viewmodel.EstadoEliminacionMovimiento
 import java.time.ZoneId
 
 @Composable
 internal fun PantallaDetalleMovimiento(
     fila: MovimientoConCategoria?,
     zona: ZoneId?,
+    estadoEliminacion: EstadoEliminacionMovimiento,
+    editar: () -> Unit,
+    eliminar: () -> Unit,
+    limpiarError: () -> Unit,
     volver: () -> Unit,
 ) {
+    var confirmar by rememberSaveable { mutableStateOf(false) }
+    val eliminando = estadoEliminacion == EstadoEliminacionMovimiento.Eliminando
+    val bloqueado = eliminando || estadoEliminacion == EstadoEliminacionMovimiento.Eliminado
+    BackHandler(enabled = eliminando) {}
     Column(Modifier.fillMaxSize()) {
-        Cabecera("Detalle", volver)
+        Cabecera("Detalle", volver = { if (!bloqueado) volver() })
         Cuerpo(Modifier.weight(1f), espacio = 14) {
             if (zona == null) {
                 Etiqueta("Cargando movimiento…")
@@ -54,6 +73,45 @@ internal fun PantallaDetalleMovimiento(
                     }
                 }
             }
+            BotonPrincipal("Editar movimiento", habilitado = !bloqueado, alPulsar = editar)
+            TextButton(
+                onClick = {
+                    limpiarError()
+                    confirmar = true
+                },
+                enabled = !bloqueado,
+                modifier = Modifier.fillMaxWidth(),
+                colors = ButtonDefaults.textButtonColors(contentColor = RojoGasto),
+            ) { Text("Eliminar movimiento") }
         }
+    }
+
+    if (confirmar && fila != null && estadoEliminacion != EstadoEliminacionMovimiento.Eliminado) {
+        fun cerrarConfirmacion() {
+            if (eliminando) return
+            confirmar = false
+            limpiarError()
+        }
+        AlertDialog(
+            onDismissRequest = ::cerrarConfirmacion,
+            title = { Text("¿Eliminar movimiento?") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Se eliminará «${fila.titulo()}» (${fila.montoConSigno()}). Esta acción es irreversible.")
+                    if (estadoEliminacion == EstadoEliminacionMovimiento.Error) {
+                        Text("No se pudo eliminar el movimiento. Vuelve a intentarlo.", color = RojoGasto)
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = eliminar,
+                    enabled = !eliminando,
+                    colors = ButtonDefaults.textButtonColors(contentColor = RojoGasto),
+                ) { Text(if (eliminando) "Eliminando…" else "Eliminar") }
+            },
+            dismissButton = { TextButton(onClick = ::cerrarConfirmacion, enabled = !eliminando) { Text("Cancelar") } },
+            properties = DialogProperties(dismissOnBackPress = !eliminando, dismissOnClickOutside = !eliminando),
+        )
     }
 }
