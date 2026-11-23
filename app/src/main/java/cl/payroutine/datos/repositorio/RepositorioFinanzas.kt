@@ -70,21 +70,34 @@ class RepositorioFinanzas(private val baseDatos: BaseDatosPayRoutine) {
     }
 
     suspend fun registrarMovimiento(datos: NuevoMovimiento): Long = baseDatos.withTransaction {
+        movimientoDao.insertar(prepararMovimiento(datos))
+    }
+
+    suspend fun editarMovimiento(id: Int, datos: NuevoMovimiento): Boolean = baseDatos.withTransaction {
+        val anterior = movimientoDao.buscarPorId(id) ?: return@withTransaction false
+        require(datos.tipo == anterior.tipo) { "No se puede cambiar el tipo de movimiento" }
+        movimientoDao.actualizar(prepararMovimiento(datos, anterior)) == 1
+    }
+
+    suspend fun eliminarMovimiento(id: Int): Int = movimientoDao.eliminarPorId(id)
+
+    private suspend fun prepararMovimiento(datos: NuevoMovimiento, anterior: Movimiento? = null): Movimiento {
         require(datos.nombre.isNotBlank()) { "El nombre del movimiento es obligatorio" }
         require(datos.monto in 1..MONTO_MAXIMO_EXACTO) { "El monto debe ser un número positivo de pesos enteros" }
         val zona = ZoneId.systemDefault()
         require(datos.fecha <= LocalDate.now(zona)) { "La fecha no puede ser futura" }
         val categoria = categoriaDao.buscarPorId(datos.categoriaId)
         require(categoria != null && categoria.tipo == datos.tipo) { "La categoría no corresponde al tipo de movimiento" }
-        movimientoDao.insertar(
-            Movimiento(
-                nombre = datos.nombre.trim(),
-                tipo = datos.tipo,
-                monto = datos.monto.toDouble(),
-                fecha = Date.from(datos.fecha.atStartOfDay(zona).toInstant()),
-                categoriaId = datos.categoriaId,
-                nota = datos.nota.trim().takeIf { it.isNotEmpty() },
-            ),
+        val fecha = anterior?.fecha?.takeIf { it.toInstant().atZone(zona).toLocalDate() == datos.fecha }
+            ?: Date.from(datos.fecha.atStartOfDay(zona).toInstant())
+        return Movimiento(
+            id = anterior?.id ?: 0,
+            nombre = datos.nombre.trim(),
+            tipo = datos.tipo,
+            monto = datos.monto.toDouble(),
+            fecha = fecha,
+            categoriaId = datos.categoriaId,
+            nota = datos.nota.trim().takeIf { it.isNotEmpty() },
         )
     }
 

@@ -8,6 +8,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -23,6 +24,7 @@ import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import cl.payroutine.datos.local.entidad.Movimiento
 import cl.payroutine.datos.local.entidad.TipoMovimiento
 import cl.payroutine.datos.repositorio.NuevoMovimiento
 import cl.payroutine.datos.repositorio.validarMontoMovimiento
@@ -31,9 +33,9 @@ import cl.payroutine.viewmodel.EstadoCategorias
 import cl.payroutine.viewmodel.EstadoRegistroMovimiento
 import java.time.Instant
 import java.time.LocalDate
+import java.time.ZoneId
 import java.time.ZoneOffset
 
-@OptIn(ExperimentalLayoutApi::class, ExperimentalMaterial3Api::class)
 @Composable
 internal fun PantallaNuevoMovimiento(
     estadoCategorias: EstadoCategorias,
@@ -41,18 +43,40 @@ internal fun PantallaNuevoMovimiento(
     estadoRegistro: EstadoRegistroMovimiento = EstadoRegistroMovimiento(),
     guardar: (NuevoMovimiento) -> Unit = {},
     volver: () -> Unit,
+) = FormularioMovimiento(estadoCategorias, reintentarCategorias, estadoRegistro, guardar, volver = volver)
+
+@OptIn(ExperimentalLayoutApi::class, ExperimentalMaterial3Api::class)
+@Composable
+internal fun FormularioMovimiento(
+    estadoCategorias: EstadoCategorias,
+    reintentarCategorias: () -> Unit,
+    estadoRegistro: EstadoRegistroMovimiento,
+    guardar: (NuevoMovimiento) -> Unit,
+    movimientoInicial: Movimiento? = null,
+    volver: () -> Unit,
 ) {
-    var ingreso by rememberSaveable { mutableStateOf(false) }
-    var categoriaGasto by rememberSaveable { mutableStateOf<Int?>(null) }
-    var categoriaIngreso by rememberSaveable { mutableStateOf<Int?>(null) }
-    var nombre by rememberSaveable { mutableStateOf("") }
-    var monto by rememberSaveable { mutableStateOf("") }
-    var nota by rememberSaveable { mutableStateOf("") }
-    var dia by rememberSaveable { mutableStateOf(LocalDate.now().toEpochDay()) }
+    val idEdicion = movimientoInicial?.id
+    val hoy = LocalDate.now()
+    var ingreso by rememberSaveable(idEdicion) { mutableStateOf(movimientoInicial?.tipo == TipoMovimiento.Ingreso) }
+    var categoriaGasto by rememberSaveable(idEdicion) {
+        mutableStateOf(movimientoInicial?.takeIf { it.tipo == TipoMovimiento.Gasto }?.categoriaId)
+    }
+    var categoriaIngreso by rememberSaveable(idEdicion) {
+        mutableStateOf(movimientoInicial?.takeIf { it.tipo == TipoMovimiento.Ingreso }?.categoriaId)
+    }
+    var nombre by rememberSaveable(idEdicion) { mutableStateOf(movimientoInicial?.nombre.orEmpty()) }
+    var monto by rememberSaveable(idEdicion) {
+        val texto = movimientoInicial?.monto?.toBigDecimal()?.stripTrailingZeros()?.toPlainString()?.replace('.', ',')
+        mutableStateOf(texto.orEmpty())
+    }
+    var nota by rememberSaveable(idEdicion) { mutableStateOf(movimientoInicial?.nota.orEmpty()) }
+    var dia by rememberSaveable(idEdicion) {
+        val fechaInicial = movimientoInicial?.fecha?.toInstant()?.atZone(ZoneId.systemDefault())?.toLocalDate() ?: hoy
+        mutableLongStateOf(fechaInicial.toEpochDay())
+    }
     var mostrarCalendario by rememberSaveable { mutableStateOf(false) }
     var intentoGuardar by rememberSaveable { mutableStateOf(false) }
     val fecha = LocalDate.ofEpochDay(dia)
-    val hoy = LocalDate.now()
     val montoValidado = validarMontoMovimiento(monto)
     val bloqueado = estadoRegistro.guardando || estadoRegistro.idGuardado != null
     val foco = LocalFocusManager.current
@@ -60,7 +84,8 @@ internal fun PantallaNuevoMovimiento(
     val tipo = if (ingreso) TipoMovimiento.Ingreso else TipoMovimiento.Gasto
     val categorias = estadoCategorias.categorias.map { it.categoria }.filter { it.tipo == tipo }
     val idSeleccionado = if (ingreso) categoriaIngreso else categoriaGasto
-    val seleccionada = categorias.firstOrNull { it.id == idSeleccionado } ?: categorias.firstOrNull()
+    val seleccionada = categorias.firstOrNull { it.id == idSeleccionado }
+        ?: categorias.firstOrNull().takeIf { movimientoInicial == null }
     val color = if (ingreso) VerdeIngreso else RojoGasto
 
     fun cerrarTeclado() {
@@ -71,7 +96,11 @@ internal fun PantallaNuevoMovimiento(
     BackHandler(enabled = estadoRegistro.guardando) {}
     Column(Modifier.fillMaxSize().imePadding()) {
         Cabecera(
-            titulo = if (ingreso) "Nuevo ingreso" else "Nuevo gasto",
+            titulo = when {
+                movimientoInicial != null -> if (ingreso) "Editar ingreso" else "Editar gasto"
+                ingreso -> "Nuevo ingreso"
+                else -> "Nuevo gasto"
+            },
             volver = {
                 if (!bloqueado) {
                     cerrarTeclado()
@@ -80,8 +109,10 @@ internal fun PantallaNuevoMovimiento(
             },
         )
         Cuerpo(Modifier.weight(1f), espacio = 14) {
-            Segmentos(listOf("Gasto", "Ingreso"), if (ingreso) 1 else 0) {
-                if (!bloqueado) ingreso = it == 1
+            if (movimientoInicial == null) {
+                Segmentos(listOf("Gasto", "Ingreso"), if (ingreso) 1 else 0) {
+                    if (!bloqueado) ingreso = it == 1
+                }
             }
             OutlinedTextField(
                 value = nombre, onValueChange = { nombre = it },
@@ -143,6 +174,9 @@ internal fun PantallaNuevoMovimiento(
                         }
                     }
                 }
+                if (!estadoCategorias.cargando && !estadoCategorias.errorCarga && categorias.isNotEmpty() && seleccionada == null) {
+                    Etiqueta("Selecciona una categoría.", RojoGasto)
+                }
             }
             OutlinedTextField(
                 value = nota, onValueChange = { nota = it },
@@ -154,7 +188,12 @@ internal fun PantallaNuevoMovimiento(
         }
         estadoRegistro.error?.let { Etiqueta(it, RojoGasto, Modifier.padding(horizontal = 16.dp)) }
         BotonPrincipal(
-            if (estadoRegistro.guardando) "Guardando…" else if (ingreso) "Guardar ingreso" else "Guardar gasto",
+            when {
+                estadoRegistro.guardando -> "Guardando…"
+                movimientoInicial != null -> "Guardar cambios"
+                ingreso -> "Guardar ingreso"
+                else -> "Guardar gasto"
+            },
             modifier = Modifier.padding(16.dp),
             habilitado = !bloqueado && !estadoCategorias.cargando && !estadoCategorias.errorCarga && seleccionada != null,
         ) {

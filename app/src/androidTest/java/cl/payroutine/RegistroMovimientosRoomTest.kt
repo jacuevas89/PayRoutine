@@ -5,6 +5,7 @@ import androidx.room.Room
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import cl.payroutine.datos.local.BaseDatosPayRoutine
+import cl.payroutine.datos.local.entidad.Movimiento
 import cl.payroutine.datos.local.entidad.TipoMovimiento
 import cl.payroutine.datos.repositorio.MONTO_MAXIMO_EXACTO
 import cl.payroutine.datos.repositorio.NuevoMovimiento
@@ -14,6 +15,7 @@ import cl.payroutine.viewmodel.observarInicio
 import java.math.BigDecimal
 import java.time.LocalDate
 import java.time.ZoneId
+import java.util.Date
 import java.util.UUID
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOf
@@ -27,6 +29,50 @@ import org.junit.runner.RunWith
 class RegistroMovimientosRoomTest {
     private val instrumentacion = InstrumentationRegistry.getInstrumentation()
     private val contexto = instrumentacion.targetContext
+
+    @Test
+    fun editaYEliminaPorIdYActualizaSaldoYContadores() = runBlocking {
+        val base = Room.inMemoryDatabaseBuilder(contexto, BaseDatosPayRoutine::class.java).build()
+        val repositorio = RepositorioFinanzas(base)
+        try {
+            repositorio.prepararCategoriasIniciales()
+            val categorias = repositorio.observarCategorias().first()
+            val sueldo = categorias.single { it.nombre == "Sueldo" }
+            val hogar = categorias.single { it.nombre == "Hogar" }
+            val transporte = categorias.single { it.nombre == "Transporte" }
+            val zona = ZoneId.systemDefault()
+            val hoy = LocalDate.now(zona)
+            val instanteOriginal = Date.from(hoy.atTime(10, 30).atZone(zona).toInstant())
+            val gasto = Movimiento(tipo = TipoMovimiento.Gasto, monto = 5000.0, fecha = instanteOriginal, categoriaId = hogar.id)
+            val idGasto = repositorio.insertar(gasto).toInt()
+            val idIngreso = repositorio.registrarMovimiento(
+                NuevoMovimiento("Sueldo", TipoMovimiento.Ingreso, 50000, hoy, sueldo.id),
+            ).toInt()
+
+            val cambio = NuevoMovimiento(" Reparación ", TipoMovimiento.Gasto, 11000, hoy, transporte.id, " Taller ")
+            for (invalido in listOf(cambio.copy(tipo = TipoMovimiento.Ingreso, categoriaId = sueldo.id), cambio.copy(categoriaId = sueldo.id))) {
+                assertTrue(runCatching { repositorio.editarMovimiento(idGasto, invalido) }.exceptionOrNull() is IllegalArgumentException)
+            }
+            assertEquals(gasto.copy(id = idGasto), repositorio.observarMovimientos().first().single { it.id == idGasto })
+            assertTrue(repositorio.editarMovimiento(idGasto, cambio))
+            val editado = repositorio.observarMovimientos().first().single { it.id == idGasto }
+            assertEquals(gasto.copy(id = idGasto, monto = 11000.0, categoriaId = transporte.id, nota = "Taller", nombre = "Reparación"), editado)
+            val inicio = repositorio.observarInicio(flowOf(FechaLocal(hoy, zona)))
+            assertEquals(BigDecimal("39000.0"), inicio.first().saldo)
+            val usos = repositorio.observarCategoriasConUso()
+            assertEquals(0, usos.first().single { it.categoria.id == hogar.id }.cantidadMovimientos)
+            assertEquals(1, usos.first().single { it.categoria.id == transporte.id }.cantidadMovimientos)
+
+            assertEquals(1, repositorio.eliminarMovimiento(idGasto))
+            assertEquals(0, repositorio.eliminarMovimiento(idGasto))
+            assertFalse(repositorio.editarMovimiento(idGasto, cambio))
+            assertEquals(idIngreso, repositorio.observarMovimientos().first().single().id)
+            assertEquals(BigDecimal("50000.0"), inicio.first().saldo)
+            assertEquals(0, usos.first().single { it.categoria.id == transporte.id }.cantidadMovimientos)
+        } finally {
+            base.close()
+        }
+    }
 
     @Test
     fun registraAmbosTiposActualizaInicioYContadoresYPersisteAlReabrir() = runBlocking {

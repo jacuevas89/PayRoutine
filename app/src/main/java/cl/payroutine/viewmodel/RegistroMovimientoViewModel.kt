@@ -27,14 +27,24 @@ internal class RegistroMovimientoViewModel(
     private val estadoInterno = MutableStateFlow(EstadoRegistroMovimiento())
     val estado = estadoInterno.asStateFlow()
 
-    fun guardar(datos: NuevoMovimiento) {
+    fun guardar(datos: NuevoMovimiento) = ejecutarGuardado { repositorio.registrarMovimiento(datos) }
+
+    fun editar(id: Int, datos: NuevoMovimiento) = ejecutarGuardado {
+        if (repositorio.editarMovimiento(id, datos)) id.toLong() else null
+    }
+
+    private fun ejecutarGuardado(guardar: suspend () -> Long?) {
         val actual = estadoInterno.value
         if (actual.guardando || actual.idGuardado != null) return
         estadoInterno.value = EstadoRegistroMovimiento(guardando = true)
         viewModelScope.launch {
             try {
-                val id = repositorio.registrarMovimiento(datos)
-                estadoInterno.value = EstadoRegistroMovimiento(idGuardado = id)
+                val id = guardar()
+                estadoInterno.value = if (id == null) {
+                    EstadoRegistroMovimiento(error = "El movimiento ya no está disponible.")
+                } else {
+                    EstadoRegistroMovimiento(idGuardado = id)
+                }
             } catch (error: SQLiteException) {
                 Log.e("RegistroMovimiento", "Error al guardar el movimiento", error)
                 estadoInterno.value = EstadoRegistroMovimiento(error = "No se pudo guardar el movimiento. Vuelve a intentarlo.")

@@ -17,7 +17,10 @@ import androidx.room.Room
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import cl.payroutine.datos.local.BaseDatosPayRoutine
+import cl.payroutine.datos.local.entidad.Movimiento
+import cl.payroutine.datos.local.entidad.TipoMovimiento
 import cl.payroutine.datos.repositorio.RepositorioFinanzas
+import cl.payroutine.ui.pantallas.FormularioMovimiento
 import cl.payroutine.ui.pantallas.PantallaNuevoMovimiento
 import cl.payroutine.ui.pantallas.fechaEnPantalla
 import cl.payroutine.ui.theme.PayRoutineTheme
@@ -29,6 +32,7 @@ import kotlinx.coroutines.runBlocking
 import java.time.LocalDate
 import java.time.ZoneId
 import java.time.ZoneOffset
+import java.util.Date
 import org.junit.After
 import org.junit.Assert.*
 import org.junit.Before
@@ -73,6 +77,47 @@ class RegistroMovimientosPantallasTest {
         }
         compose.waitUntil(10000) { compose.onAllNodesWithText("Alimentación").fetchSemanticsNodes().isNotEmpty() }
         return restauracion
+    }
+
+    @Test
+    fun edicionPrecargaLosCamposYNoInterpretaDecimalesHistoricosComoMiles() {
+        val dia = LocalDate.now().minusDays(1)
+        val anterior = runBlocking {
+            val transporte = repositorio.observarCategorias().first().single { it.nombre == "Transporte" }
+            val antiguo = Movimiento(
+                tipo = TipoMovimiento.Gasto,
+                monto = 120.125,
+                fecha = Date.from(dia.atStartOfDay(ZoneId.systemDefault()).toInstant()),
+                categoriaId = transporte.id,
+                nombre = "Taxi",
+                nota = "Al centro",
+            )
+            antiguo.copy(id = repositorio.insertar(antiguo).toInt())
+        }
+        val categorias = repositorio.observarCategoriasConUso().map { EstadoCategorias(cargando = false, categorias = it) }
+        compose.setContent {
+            val estadoCategorias by categorias.collectAsState(EstadoCategorias())
+            val estadoRegistro by registro.estado.collectAsState()
+            PayRoutineTheme {
+                FormularioMovimiento(estadoCategorias, {}, estadoRegistro, { registro.editar(anterior.id, it) }, anterior) {}
+            }
+        }
+        compose.waitUntil(10000) { compose.onAllNodesWithText("Transporte").fetchSemanticsNodes().isNotEmpty() }
+        compose.onNodeWithText("Editar gasto").assertIsDisplayed()
+        compose.onNodeWithText("Ingreso").assertDoesNotExist()
+        campo("Nombre del movimiento").assertTextContains("Taxi")
+        campo("Monto").assertTextContains("120,125")
+        compose.onNodeWithText(fechaEnPantalla(dia)).assertExists()
+        compose.onNodeWithText("Transporte").assertIsSelected()
+        campo("Nota (opcional)").performScrollTo().assertTextContains("Al centro")
+
+        compose.onNodeWithText("Guardar cambios").performClick()
+        compose.onNodeWithText("Ingresa pesos enteros", substring = true).assertExists()
+        assertEquals(anterior, runBlocking { repositorio.observarMovimientos().first().single() })
+        campo("Monto").performScrollTo().performTextReplacement("1300")
+        compose.onNodeWithText("Guardar cambios").performClick()
+        compose.waitUntil(10000) { registro.estado.value.idGuardado != null }
+        assertEquals(anterior.copy(monto = 1300.0), runBlocking { repositorio.observarMovimientos().first().single() })
     }
 
     @Test
