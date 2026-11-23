@@ -5,6 +5,7 @@ import androidx.room.Room
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import cl.payroutine.datos.local.BaseDatosPayRoutine
+import cl.payroutine.datos.local.MIGRACION_5_6
 import cl.payroutine.datos.repositorio.RepositorioFinanzas
 import java.util.UUID
 import kotlinx.coroutines.async
@@ -93,7 +94,7 @@ class RegistroUsuarioTest {
     }
 
     private inline fun <T> conBase(nombre: String, usar: (BaseDatosPayRoutine) -> T): T {
-        val base = Room.databaseBuilder(contexto, BaseDatosPayRoutine::class.java, nombre).build()
+        val base = Room.databaseBuilder(contexto, BaseDatosPayRoutine::class.java, nombre).addMigrations(MIGRACION_5_6).build()
         try {
             return usar(base)
         } finally {

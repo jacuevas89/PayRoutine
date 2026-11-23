@@ -13,8 +13,11 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -33,7 +36,9 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import cl.payroutine.datos.local.entidad.TipoMovimiento
+import cl.payroutine.datos.local.entidad.RecordatorioMovimiento
 import cl.payroutine.datos.local.entidad.Usuario
+import cl.payroutine.datos.local.entidad.PreferenciasPresupuesto
 import cl.payroutine.ui.pantallas.*
 import cl.payroutine.ui.theme.*
 import cl.payroutine.viewmodel.DatosInicio
@@ -47,6 +52,11 @@ import cl.payroutine.viewmodel.EstadoPerfil
 import cl.payroutine.viewmodel.FinanzasViewModel
 import cl.payroutine.viewmodel.PerfilViewModel
 import cl.payroutine.viewmodel.RegistroMovimientoViewModel
+import cl.payroutine.viewmodel.RecordatoriosViewModel
+import cl.payroutine.viewmodel.PresupuestoViewModel
+import cl.payroutine.viewmodel.OperacionPresupuesto
+import java.time.YearMonth
+import java.time.ZoneId
 
 private const val NUEVO_MOVIMIENTO = "nuevo-movimiento"
 private const val NUEVO_PAGO = "nuevo-pago"
@@ -74,7 +84,16 @@ private enum class Seccion(val ruta: String, val titulo: String, val icono: Stri
 }
 
 @Composable
-internal fun PayRoutineApp(perfil: PerfilViewModel, finanzas: FinanzasViewModel, categorias: CategoriasViewModel) {
+internal fun PayRoutineApp(
+    perfil: PerfilViewModel,
+    finanzas: FinanzasViewModel,
+    categorias: CategoriasViewModel,
+    recordatorios: RecordatoriosViewModel,
+    presupuesto: PresupuestoViewModel,
+    usuarioDelAviso: String?,
+    avisoDePresupuesto: Boolean,
+    consumirAviso: () -> Unit,
+) {
     val estado by perfil.estado.collectAsState()
     val estadoCategorias by categorias.estado.collectAsState()
     val inicio = if (estado.usuario != null && !estado.errorCarga) {
@@ -94,6 +113,11 @@ internal fun PayRoutineApp(perfil: PerfilViewModel, finanzas: FinanzasViewModel,
         guardarEdicion = perfil::guardarEdicion,
         eliminarDatos = perfil::eliminarTodosLosDatos,
         limpiarErrorBorrado = perfil::limpiarErrorBorrado,
+        recordatorios = recordatorios,
+        presupuesto = presupuesto,
+        usuarioDelAviso = usuarioDelAviso,
+        avisoDePresupuesto = avisoDePresupuesto,
+        consumirAviso = consumirAviso,
         registrar = perfil::registrar,
     )
 }
@@ -111,6 +135,11 @@ internal fun NavegacionPayRoutine(
     limpiarErrorBorrado: () -> Unit = {},
     crearCategoria: (String, TipoMovimiento) -> Unit = { _, _ -> },
     limpiarCreacionCategoria: () -> Unit = {},
+    recordatorios: RecordatoriosViewModel? = null,
+    presupuesto: PresupuestoViewModel? = null,
+    usuarioDelAviso: String? = null,
+    avisoDePresupuesto: Boolean = false,
+    consumirAviso: () -> Unit = {},
     registrar: (String, String) -> Unit,
 ) {
     val usuario = estado.usuario
@@ -120,11 +149,40 @@ internal fun NavegacionPayRoutine(
     }
 
     key(usuario.id) {
-        NavegacionPrincipal(
-            usuario, inicio, estado.edicion, estado.borrado,
-            prepararEdicion, guardarEdicion, eliminarDatos, limpiarErrorBorrado,
-            categorias, reintentarCategorias, crearCategoria, limpiarCreacionCategoria,
-        )
+        val preferenciasFlujo = remember(presupuesto, usuario.id) { presupuesto?.preferencias(usuario.id) }
+        val preferencias = preferenciasFlujo?.collectAsState(initial = null)?.value
+        if (presupuesto != null && preferencias == null) {
+            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
+        } else if (presupuesto != null && preferencias?.configuracionPendiente == true) {
+            val actual = inicio?.fecha?.let { YearMonth.from(it.hoy) } ?: YearMonth.now()
+            var periodo by rememberSaveable { mutableStateOf(actual.toString()) }
+            val mes = YearMonth.parse(periodo)
+            val estadoOperacion by presupuesto.estadoOperacion.collectAsState()
+            AjustarBarraDeEstado(true)
+            Scaffold(containerColor = Fondo) { espacio ->
+                Box(Modifier.fillMaxSize().padding(espacio).consumeWindowInsets(espacio)) {
+                    PantallaConfigurarPresupuesto(
+                        mes = mes,
+                        categorias = categorias.categorias.map { it.categoria }.filter { it.tipo == TipoMovimiento.Gasto },
+                        gastos = movimientosDelPeriodo(inicio, mes).filterNot { it.esIngreso() },
+                        movimientosCargados = inicio != null,
+                        hayMovimientosAnteriores = movimientosDelPeriodo(inicio, actual.minusMonths(1)).isNotEmpty(),
+                        estado = estadoOperacion,
+                        elegirPeriodo = { periodo = it.toString() },
+                        guardar = { general, limites -> presupuesto.guardar(usuario.id, mes, general, limites) {} },
+                        automatico = { presupuesto.automatico(usuario.id, true, it) },
+                        omitir = { presupuesto.omitir(usuario.id) },
+                    )
+                }
+            }
+        } else {
+            NavegacionPrincipal(
+                usuario, inicio, estado.edicion, estado.borrado,
+                prepararEdicion, guardarEdicion, eliminarDatos, limpiarErrorBorrado,
+                categorias, reintentarCategorias, crearCategoria, limpiarCreacionCategoria,
+                recordatorios, presupuesto, preferencias, usuarioDelAviso, avisoDePresupuesto, consumirAviso,
+            )
+        }
     }
 }
 
@@ -142,6 +200,12 @@ private fun NavegacionPrincipal(
     reintentarCategorias: () -> Unit,
     crearCategoria: (String, TipoMovimiento) -> Unit,
     limpiarCreacionCategoria: () -> Unit,
+    recordatorios: RecordatoriosViewModel?,
+    presupuesto: PresupuestoViewModel?,
+    preferenciasPresupuesto: PreferenciasPresupuesto?,
+    usuarioDelAviso: String?,
+    avisoDePresupuesto: Boolean,
+    consumirAviso: () -> Unit,
 ) {
     val navegador = rememberNavController()
     val entradaActual = navegador.currentBackStackEntryAsState().value
@@ -150,6 +214,10 @@ private fun NavegacionPrincipal(
     val borradoActual by rememberUpdatedState(borrado)
     val datosActuales by rememberUpdatedState(inicio)
     val categoriasActuales by rememberUpdatedState(categorias)
+    val preferenciasActuales by rememberUpdatedState(preferenciasPresupuesto)
+    val presupuestos = presupuesto?.presupuestos?.collectAsState()?.value
+    val presupuestosActuales by rememberUpdatedState(presupuestos)
+    var periodoPresupuesto by rememberSaveable { mutableStateOf(YearMonth.now().toString()) }
     val rutaActual = entradaActual?.destination?.route ?: Seccion.Inicio.ruta
     val seccionActual = Seccion.entries.firstOrNull { it.ruta == rutaActual }
     val fondoSuperior = if (seccionActual == Seccion.Inicio) AzulNoche else Color.White
@@ -172,6 +240,20 @@ private fun NavegacionPrincipal(
             }
             restoreState = true
             launchSingleTop = true
+        }
+    }
+
+    LaunchedEffect(usuarioDelAviso, avisoDePresupuesto, entradaActual) {
+        if (usuarioDelAviso != null && entradaActual != null) {
+            if (usuarioDelAviso == usuario.id) {
+                if (avisoDePresupuesto) {
+                    periodoPresupuesto = YearMonth.now().toString()
+                    irA(entradaActual, Seccion.Presupuesto)
+                } else if (entradaActual.destination.route != NUEVO_MOVIMIENTO) {
+                    abrir(entradaActual, NUEVO_MOVIMIENTO)
+                }
+            }
+            consumirAviso()
         }
     }
 
@@ -224,10 +306,45 @@ private fun NavegacionPrincipal(
                     PantallaMovimientos(datosActuales, categoriasActuales) { abrir(origen, "$DETALLE_MOVIMIENTO/$it") }
                 }
                 composable(Seccion.Presupuesto.ruta) { origen ->
+                    val mes = YearMonth.parse(periodoPresupuesto)
+                    val actual = YearMonth.now()
+                    val automatico = preferenciasActuales?.primerMesAutomatico != null
+                    val operacion = presupuesto?.estadoOperacion?.collectAsState()?.value ?: OperacionPresupuesto.Disponible
+                    var confirmarAutomatico by rememberSaveable { mutableStateOf(false) }
                     PantallaPresupuesto(
-                        editar = { abrir(origen, EDITAR_PRESUPUESTO) },
-                        verExcedido = { abrir(origen, PRESUPUESTO_EXCEDIDO) },
+                        mes = mes,
+                        cargando = presupuesto != null && presupuestosActuales == null,
+                        presupuesto = presupuestosActuales?.get(mes),
+                        anterior = presupuestosActuales?.get(mes.minusMonths(1)),
+                        categorias = categoriasActuales.categorias.map { it.categoria }.filter { it.tipo == TipoMovimiento.Gasto },
+                        gastos = movimientosDelPeriodo(datosActuales, mes).filterNot { it.esIngreso() },
+                        automatico = automatico,
+                        elegirPeriodo = { periodoPresupuesto = it.toString() },
+                        editar = {
+                            presupuesto?.limpiarError()
+                            abrir(origen, "$EDITAR_PRESUPUESTO/false")
+                        },
+                        copiar = {
+                            presupuesto?.limpiarError()
+                            abrir(origen, "$EDITAR_PRESUPUESTO/true")
+                        },
+                        cambiarAutomatico = {
+                            if (operacion != OperacionPresupuesto.Guardando && datosActuales != null) {
+                                if (automatico) presupuesto?.automatico(usuario.id, false, false)
+                                else confirmarAutomatico = true
+                            }
+                        },
+                        estado = operacion,
+                        verExcedido = { abrir(origen, "$PRESUPUESTO_EXCEDIDO/$it") },
                     )
+                    if (confirmarAutomatico) ConfirmarPresupuestoAutomatico(
+                        actual,
+                        movimientosDelPeriodo(datosActuales, actual.minusMonths(1)).isNotEmpty(),
+                        cerrar = { confirmarAutomatico = false },
+                    ) {
+                        confirmarAutomatico = false
+                        presupuesto?.automatico(usuario.id, true, it)
+                    }
                 }
                 composable(Seccion.Pagos.ruta) { origen ->
                     PantallaPagos(
@@ -236,7 +353,7 @@ private fun NavegacionPrincipal(
                         verCuota = { abrir(origen, DETALLE_CUOTA) },
                     )
                 }
-                composable(Seccion.Resumen.ruta) { PantallaResumen() }
+                composable(Seccion.Resumen.ruta) { PantallaResumen(datosActuales) }
                 composable(NUEVO_MOVIMIENTO) { origen ->
                     val registro = viewModelDelDestino<RegistroMovimientoViewModel>(origen)
                     val estadoRegistro by registro.estado.collectAsState()
@@ -277,10 +394,44 @@ private fun NavegacionPrincipal(
                     }
                 }
                 composable(NUEVO_PAGO) { origen -> PantallaNuevoPago { volver(origen) } }
-                composable(PRESUPUESTO_EXCEDIDO) { origen ->
-                    PantallaPresupuestoExcedido(volver = { volver(origen) }, editar = { abrir(origen, EDITAR_PRESUPUESTO) })
+                composable(
+                    "$PRESUPUESTO_EXCEDIDO/{categoria}",
+                    arguments = listOf(navArgument("categoria") { type = NavType.IntType }),
+                ) { origen ->
+                    val mes = YearMonth.parse(periodoPresupuesto)
+                    val id = requireNotNull(origen.arguments).getInt("categoria")
+                    val periodo = presupuestosActuales?.get(mes)
+                    PantallaPresupuestoExcedido(
+                        mes,
+                        categoriasActuales.categorias.find { it.categoria.id == id }?.categoria?.nombre ?: "Presupuesto",
+                        if (id == 0) periodo?.datos?.limiteGeneral else periodo?.limites?.get(id),
+                        movimientosDelPeriodo(datosActuales, mes).filter { !it.esIngreso() && (id == 0 || it.movimiento.categoriaId == id) },
+                        datosActuales?.fecha?.zona ?: ZoneId.systemDefault(),
+                        volver = { volver(origen) },
+                        editar = { abrir(origen, "$EDITAR_PRESUPUESTO/false") },
+                    )
                 }
-                composable(EDITAR_PRESUPUESTO) { origen -> PantallaEditarPresupuesto { volver(origen) } }
+                composable(
+                    "$EDITAR_PRESUPUESTO/{copiar}",
+                    arguments = listOf(navArgument("copiar") { type = NavType.BoolType }),
+                ) { origen ->
+                    val mes = YearMonth.parse(periodoPresupuesto)
+                    val copiar = requireNotNull(origen.arguments).getBoolean("copiar")
+                    val operacion = presupuesto?.estadoOperacion?.collectAsState()?.value ?: OperacionPresupuesto.Disponible
+                    if (presupuesto == null || presupuestosActuales != null) PantallaEditarPresupuesto(
+                        mes = mes,
+                        origen = presupuestosActuales?.get(if (copiar) mes.minusMonths(1) else mes),
+                        modalidadInicial = null,
+                        categorias = categoriasActuales.categorias.map { it.categoria }.filter { it.tipo == TipoMovimiento.Gasto },
+                        gastos = movimientosDelPeriodo(datosActuales, mes).filterNot { it.esIngreso() },
+                        estado = operacion,
+                        volver = { volver(origen) },
+                        guardar = { general, limites ->
+                            presupuesto?.guardar(usuario.id, mes, general, limites) { volver(origen) }
+                        },
+                        copiado = copiar,
+                    )
+                }
                 composable(AJUSTES) { origen ->
                     PantallaAjustes(
                         apodo = usuarioActual.apodo,
@@ -335,7 +486,21 @@ private fun NavegacionPrincipal(
                     ) { volver(origen) }
                 }
                 composable(CONSEJOS_AHORRO) { origen -> PantallaConsejosAhorro { volver(origen) } }
-                composable(RECORDATORIOS) { origen -> PantallaRecordatorios { volver(origen) } }
+                composable(RECORDATORIOS) { origen ->
+                    val configuraciones = remember(recordatorios, usuario.id) { recordatorios?.observar(usuario.id) }
+                    val configuracion = configuraciones?.collectAsState(initial = null)?.value
+                    val error = recordatorios?.error?.collectAsState()?.value ?: false
+                    PantallaRecordatorios(
+                        configuracion = configuracion ?: RecordatorioMovimiento(usuario.id),
+                        error = error,
+                        notificacionesHabilitadas = { recordatorios?.notificacionesHabilitadas() ?: true },
+                        alarmasExactasHabilitadas = { recordatorios?.alarmasExactasHabilitadas() ?: true },
+                        canalSilenciado = { recordatorios?.canalSilenciado() ?: false },
+                        actualizar = { recordatorios?.actualizar(usuario.id, it) },
+                        presupuesto = preferenciasActuales ?: PreferenciasPresupuesto(usuario.id),
+                        actualizarPresupuesto = { recordatorios?.actualizarPresupuesto(usuario.id, it) },
+                    ) { volver(origen) }
+                }
                 composable(CALENDARIO) { origen -> PantallaCalendario { volver(origen) } }
                 composable(HISTORIAL_PAGOS) { origen -> PantallaHistorialPagos { volver(origen) } }
                 composable(DETALLE_CUOTA) { origen -> PantallaDetalleCuota { volver(origen) } }
