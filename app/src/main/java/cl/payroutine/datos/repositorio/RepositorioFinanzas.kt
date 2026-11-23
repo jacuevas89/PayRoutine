@@ -5,6 +5,7 @@ import cl.payroutine.datos.local.BaseDatosPayRoutine
 import cl.payroutine.datos.local.categoriasPredefinidas
 import cl.payroutine.datos.local.entidad.Categoria
 import cl.payroutine.datos.local.entidad.Movimiento
+import cl.payroutine.datos.local.entidad.ObligacionPago
 import cl.payroutine.datos.local.entidad.PagoPendiente
 import cl.payroutine.datos.local.entidad.Presupuesto
 import cl.payroutine.datos.local.entidad.TipoMovimiento
@@ -18,6 +19,7 @@ class RepositorioFinanzas(private val baseDatos: BaseDatosPayRoutine) {
     private val movimientoDao = baseDatos.movimientoDao()
     private val presupuestoDao = baseDatos.presupuestoDao()
     private val pagoPendienteDao = baseDatos.pagoPendienteDao()
+    private val obligacionPagoDao = baseDatos.obligacionPagoDao()
     private val usuarioDao = baseDatos.usuarioDao()
 
     fun observarUsuario() = usuarioDao.observar()
@@ -55,11 +57,33 @@ class RepositorioFinanzas(private val baseDatos: BaseDatosPayRoutine) {
     fun observarMovimientosConCategoria() = movimientoDao.observarConCategoria()
     fun observarPresupuestos() = presupuestoDao.observarTodos()
     fun observarPagos() = pagoPendienteDao.observarTodos()
+    fun observarPagosPendientes() = pagoPendienteDao.observarPendientesConCategoria()
+
+    suspend fun registrarPagoUnico(datos: NuevoPagoUnico): Long = baseDatos.withTransaction {
+        require(datos.nombre.isNotBlank()) { "El nombre del pago es obligatorio" }
+        require(datos.monto in 1..MONTO_MAXIMO_EXACTO) { "El monto debe ser un número positivo de pesos enteros" }
+        val categoria = categoriaDao.buscarPorId(datos.categoriaId)
+        require(categoria?.tipo == TipoMovimiento.Gasto) { "Selecciona una categoría de gasto" }
+        val nombre = datos.nombre.trim()
+        val vencimiento = Date.from(datos.vencimiento.atStartOfDay(ZoneId.systemDefault()).toInstant())
+        val obligacionId = obligacionPagoDao.insertar(ObligacionPago(nombre = nombre, categoriaId = datos.categoriaId)).toInt()
+        pagoPendienteDao.insertar(
+            PagoPendiente(
+                descripcion = nombre,
+                monto = datos.monto.toDouble(),
+                fechaVencimiento = vencimiento,
+                esCuota = false,
+                pagado = false,
+                obligacionId = obligacionId,
+            ),
+        )
+    }
 
     suspend fun eliminarTodosLosDatos() = baseDatos.withTransaction {
         movimientoDao.eliminarTodos()
         presupuestoDao.eliminarTodos()
         pagoPendienteDao.eliminarTodos()
+        obligacionPagoDao.eliminarTodas()
         categoriaDao.eliminarPersonalizadas()
         cargarCategoriasPredefinidas()
         usuarioDao.eliminarTodos()

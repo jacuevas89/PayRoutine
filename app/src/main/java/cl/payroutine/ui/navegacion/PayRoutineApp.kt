@@ -43,10 +43,15 @@ import cl.payroutine.viewmodel.EstadoCategorias
 import cl.payroutine.viewmodel.EstadoBorrado
 import cl.payroutine.viewmodel.EstadoEdicionPerfil
 import cl.payroutine.viewmodel.EstadoEliminacionMovimiento
+import cl.payroutine.viewmodel.EstadoPagosPendientes
 import cl.payroutine.viewmodel.EstadoPerfil
+import cl.payroutine.viewmodel.FechaLocal
 import cl.payroutine.viewmodel.FinanzasViewModel
 import cl.payroutine.viewmodel.PerfilViewModel
 import cl.payroutine.viewmodel.RegistroMovimientoViewModel
+import cl.payroutine.viewmodel.RegistroPagoViewModel
+import java.time.LocalDate
+import java.time.ZoneId
 
 private const val NUEVO_MOVIMIENTO = "nuevo-movimiento"
 private const val NUEVO_PAGO = "nuevo-pago"
@@ -61,7 +66,7 @@ private const val CONSEJOS_AHORRO = "consejos-ahorro"
 private const val RECORDATORIOS = "recordatorios"
 private const val CALENDARIO = "calendario"
 private const val HISTORIAL_PAGOS = "historial-pagos"
-private const val DETALLE_CUOTA = "detalle-cuota"
+private const val DETALLE_PAGO = "detalle-pago"
 private const val DETALLE_MOVIMIENTO = "detalle-movimiento"
 private const val EDITAR_MOVIMIENTO = "editar-movimiento"
 
@@ -77,11 +82,9 @@ private enum class Seccion(val ruta: String, val titulo: String, val icono: Stri
 internal fun PayRoutineApp(perfil: PerfilViewModel, finanzas: FinanzasViewModel, categorias: CategoriasViewModel) {
     val estado by perfil.estado.collectAsState()
     val estadoCategorias by categorias.estado.collectAsState()
-    val inicio = if (estado.usuario != null && !estado.errorCarga) {
-        finanzas.inicio.collectAsState().value
-    } else {
-        null
-    }
+    val perfilActivo = estado.usuario != null && !estado.errorCarga
+    val inicio = if (perfilActivo) finanzas.inicio.collectAsState().value else null
+    val pagosPendientes = if (perfilActivo) finanzas.pagosPendientes.collectAsState().value else EstadoPagosPendientes()
     NavegacionPayRoutine(
         estado = estado,
         inicio = inicio,
@@ -94,6 +97,8 @@ internal fun PayRoutineApp(perfil: PerfilViewModel, finanzas: FinanzasViewModel,
         guardarEdicion = perfil::guardarEdicion,
         eliminarDatos = perfil::eliminarTodosLosDatos,
         limpiarErrorBorrado = perfil::limpiarErrorBorrado,
+        pagosPendientes = pagosPendientes,
+        reintentarPagos = finanzas::reintentarPagos,
         registrar = perfil::registrar,
     )
 }
@@ -111,6 +116,8 @@ internal fun NavegacionPayRoutine(
     limpiarErrorBorrado: () -> Unit = {},
     crearCategoria: (String, TipoMovimiento) -> Unit = { _, _ -> },
     limpiarCreacionCategoria: () -> Unit = {},
+    pagosPendientes: EstadoPagosPendientes = EstadoPagosPendientes(),
+    reintentarPagos: () -> Unit = {},
     registrar: (String, String) -> Unit,
 ) {
     val usuario = estado.usuario
@@ -124,6 +131,7 @@ internal fun NavegacionPayRoutine(
             usuario, inicio, estado.edicion, estado.borrado,
             prepararEdicion, guardarEdicion, eliminarDatos, limpiarErrorBorrado,
             categorias, reintentarCategorias, crearCategoria, limpiarCreacionCategoria,
+            pagosPendientes, reintentarPagos,
         )
     }
 }
@@ -142,6 +150,8 @@ private fun NavegacionPrincipal(
     reintentarCategorias: () -> Unit,
     crearCategoria: (String, TipoMovimiento) -> Unit,
     limpiarCreacionCategoria: () -> Unit,
+    pagosPendientes: EstadoPagosPendientes,
+    reintentarPagos: () -> Unit,
 ) {
     val navegador = rememberNavController()
     val entradaActual = navegador.currentBackStackEntryAsState().value
@@ -150,6 +160,8 @@ private fun NavegacionPrincipal(
     val borradoActual by rememberUpdatedState(borrado)
     val datosActuales by rememberUpdatedState(inicio)
     val categoriasActuales by rememberUpdatedState(categorias)
+    val pagosActuales by rememberUpdatedState(pagosPendientes)
+    val fechaPagos by rememberUpdatedState(inicio?.fecha ?: FechaLocal(LocalDate.now(), ZoneId.systemDefault()))
     val rutaActual = entradaActual?.destination?.route ?: Seccion.Inicio.ruta
     val seccionActual = Seccion.entries.firstOrNull { it.ruta == rutaActual }
     val fondoSuperior = if (seccionActual == Seccion.Inicio) AzulNoche else Color.White
@@ -231,9 +243,12 @@ private fun NavegacionPrincipal(
                 }
                 composable(Seccion.Pagos.ruta) { origen ->
                     PantallaPagos(
+                        estado = pagosActuales,
+                        fecha = fechaPagos,
+                        reintentar = reintentarPagos,
                         verCalendario = { abrir(origen, CALENDARIO) },
                         verHistorial = { abrir(origen, HISTORIAL_PAGOS) },
-                        verCuota = { abrir(origen, DETALLE_CUOTA) },
+                        verPago = { abrir(origen, "$DETALLE_PAGO/$it") },
                     )
                 }
                 composable(Seccion.Resumen.ruta) { PantallaResumen() }
@@ -276,7 +291,14 @@ private fun NavegacionPrincipal(
                         ) { volver(origen) }
                     }
                 }
-                composable(NUEVO_PAGO) { origen -> PantallaNuevoPago { volver(origen) } }
+                composable(NUEVO_PAGO) { origen ->
+                    val registro = viewModelDelDestino<RegistroPagoViewModel>(origen)
+                    val estadoRegistro by registro.estado.collectAsState()
+                    LaunchedEffect(estadoRegistro.idGuardado) {
+                        if (estadoRegistro.idGuardado != null) volver(origen)
+                    }
+                    PantallaNuevoPago(categoriasActuales, reintentarCategorias, estadoRegistro, registro::guardar) { volver(origen) }
+                }
                 composable(PRESUPUESTO_EXCEDIDO) { origen ->
                     PantallaPresupuestoExcedido(volver = { volver(origen) }, editar = { abrir(origen, EDITAR_PRESUPUESTO) })
                 }
@@ -338,7 +360,13 @@ private fun NavegacionPrincipal(
                 composable(RECORDATORIOS) { origen -> PantallaRecordatorios { volver(origen) } }
                 composable(CALENDARIO) { origen -> PantallaCalendario { volver(origen) } }
                 composable(HISTORIAL_PAGOS) { origen -> PantallaHistorialPagos { volver(origen) } }
-                composable(DETALLE_CUOTA) { origen -> PantallaDetalleCuota { volver(origen) } }
+                composable(
+                    "$DETALLE_PAGO/{id}",
+                    arguments = listOf(navArgument("id") { type = NavType.IntType }),
+                ) { origen ->
+                    val id = requireNotNull(origen.arguments).getInt("id")
+                    PantallaDetallePago(pagosActuales, id, fechaPagos, reintentarPagos) { volver(origen) }
+                }
                 composable(
                     "$DETALLE_MOVIMIENTO/{id}",
                     arguments = listOf(navArgument("id") { type = NavType.IntType }),

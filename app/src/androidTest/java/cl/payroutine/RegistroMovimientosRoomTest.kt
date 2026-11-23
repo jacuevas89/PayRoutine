@@ -175,7 +175,7 @@ class RegistroMovimientosRoomTest {
                 assertEquals(31, repositorio.observarPresupuestos().first().single().id)
                 assertEquals(7, repositorio.observarPagos().first().single().id)
                 assertEquals("perfil-anterior", repositorio.observarUsuario().first()?.id)
-                assertEquals(4, base.openHelper.readableDatabase.version)
+                assertEquals(5, base.openHelper.readableDatabase.version)
             } finally {
                 base.close()
             }

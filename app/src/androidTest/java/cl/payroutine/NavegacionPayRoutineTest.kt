@@ -7,6 +7,7 @@ import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import cl.payroutine.datos.local.dao.MovimientoConCategoria
+import cl.payroutine.datos.local.dao.PagoConCategoria
 import cl.payroutine.datos.local.entidad.Movimiento
 import cl.payroutine.datos.local.entidad.PagoPendiente
 import cl.payroutine.datos.local.entidad.TipoMovimiento
@@ -17,6 +18,7 @@ import cl.payroutine.ui.theme.PayRoutineTheme
 import cl.payroutine.viewmodel.EstadoPerfil
 import cl.payroutine.viewmodel.EstadoEdicionPerfil
 import cl.payroutine.viewmodel.EstadoBorrado
+import cl.payroutine.viewmodel.EstadoPagosPendientes
 import cl.payroutine.viewmodel.FechaLocal
 import cl.payroutine.viewmodel.calcularInicio
 import java.time.LocalDate
@@ -239,8 +241,9 @@ class NavegacionPayRoutineTest {
         ver("Historial de pagos")
         tocar("Pendientes")
         ver("Pagos pendientes")
-        tocar("Cuota notebook (4 de 12)")
-        ver("Calendario de cuotas")
+        tocar("Tarjeta de crédito")
+        ver("Detalle del pago")
+        ver("Servicios")
         volver()
         compose.onNodeWithContentDescription("Nuevo pago pendiente").performClick()
         ver("Guardar pago pendiente")
@@ -257,7 +260,13 @@ class NavegacionPayRoutineTest {
     private fun iniciarConPerfil() {
         compose.setContent {
             PayRoutineTheme {
-                NavegacionPayRoutine(EstadoPerfil(cargando = false, usuario = usuario), inicio, {}) { _, _ -> }
+                NavegacionPayRoutine(
+                    EstadoPerfil(cargando = false, usuario = usuario), inicio, {},
+                    pagosPendientes = EstadoPagosPendientes(
+                        cargando = false,
+                        pagos = inicio.pagosPendientes.map { PagoConCategoria(it.pago, "Servicios") },
+                    ),
+                ) { _, _ -> }
             }
         }
     }

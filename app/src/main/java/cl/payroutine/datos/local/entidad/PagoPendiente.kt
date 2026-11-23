@@ -2,10 +2,18 @@ package cl.payroutine.datos.local.entidad
 
 import androidx.room.ColumnInfo
 import androidx.room.Entity
+import androidx.room.ForeignKey
+import androidx.room.Index
 import androidx.room.PrimaryKey
 import java.util.Date
 
-@Entity(tableName = "PagoPendiente")
+@Entity(
+    tableName = "PagoPendiente",
+    foreignKeys = [
+        ForeignKey(entity = ObligacionPago::class, parentColumns = ["id"], childColumns = ["obligacion_id"]),
+    ],
+    indices = [Index("obligacion_id")],
+)
 data class PagoPendiente(
     @PrimaryKey(autoGenerate = true) val id: Int = 0,
     val descripcion: String,
@@ -15,4 +23,5 @@ data class PagoPendiente(
     @ColumnInfo(name = "cuota_actual") val cuotaActual: Int? = null,
     @ColumnInfo(name = "total_cuotas") val totalCuotas: Int? = null,
     val pagado: Boolean,
+    @ColumnInfo(name = "obligacion_id") val obligacionId: Int? = null,
 )

@@ -1,35 +1,68 @@
 package cl.payroutine.ui.pantallas
 
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Surface
-import androidx.compose.material3.Switch
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
+import cl.payroutine.datos.local.dao.PagoConCategoria
 import cl.payroutine.ui.theme.*
+import cl.payroutine.viewmodel.EstadoPagosPendientes
+import cl.payroutine.viewmodel.FechaLocal
+import java.time.LocalDate
+import java.time.YearMonth
 
 @Composable
-internal fun PantallaPagos(verCalendario: () -> Unit, verHistorial: () -> Unit, verCuota: () -> Unit) {
-    val datos = DatosDeEjemplo
-    Column {
+internal fun PantallaPagos(
+    estado: EstadoPagosPendientes,
+    fecha: FechaLocal,
+    reintentar: () -> Unit,
+    verCalendario: () -> Unit,
+    verHistorial: () -> Unit,
+    verPago: (Int) -> Unit,
+) {
+    val finDeMes = YearMonth.from(fecha.hoy).atEndOfMonth()
+    Column(Modifier.fillMaxSize()) {
         Cabecera("Pagos pendientes", accion = "Calendario", alAccionar = verCalendario)
-        Cuerpo {
-            Segmentos(listOf("Pendientes (3)", "Pagados"), 0) { if (it == 1) verHistorial() }
-            Tarjeta(Modifier.fillMaxWidth(), color = AzulNoche) {
-                Etiqueta("Por pagar este mes", TextoSobreAzul)
-                Cifra(datos.porPagar, Color.White)
+        LazyColumn(
+            modifier = Modifier.fillMaxWidth(),
+            contentPadding = PaddingValues(start = 16.dp, top = 16.dp, end = 16.dp, bottom = 72.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            item {
+                val pendientes = if (estado.cargando || estado.errorCarga) "Pendientes" else "Pendientes (${estado.pagos.size})"
+                Segmentos(listOf(pendientes, "Pagados"), 0) { if (it == 1) verHistorial() }
             }
-            datos.pagos.forEachIndexed { indice, pago ->
-                Tarjeta(Modifier.fillMaxWidth(), relleno = 13, espacio = 10, alPulsar = if (indice == 1) verCuota else null) {
-                    FilaDato(pago.nombre, pago.fecha, pago.monto, pago.icono, pago.color, pago.fondo)
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                        EstadoPago(pago.plazo, pago.color, pago.fondo)
-                        Surface(shape = RoundedCornerShape(10.dp), color = Color.White, border = BorderStroke(1.dp, VerdeMarca)) {
-                            Destacado("Marcar pagado", VerdeMarca, Modifier.padding(horizontal = 12.dp, vertical = 7.dp))
+            when {
+                estado.cargando -> item { Etiqueta("Cargando pagos…") }
+                estado.errorCarga -> item {
+                    Etiqueta("No se pudieron cargar los pagos.")
+                    BotonPrincipal("Reintentar", alPulsar = reintentar)
+                }
+                else -> {
+                    item {
+                        val total = estado.pagos.asSequence()
+                            .filter { it.diaVencimiento(fecha) <= finDeMes }
+                            .sumOf { it.pago.monto.toBigDecimal() }
+                        Tarjeta(Modifier.fillMaxWidth(), color = AzulNoche) {
+                            Etiqueta("Por pagar hasta fin de mes", TextoSobreAzul)
+                            Cifra(montoEnPantalla(total), Color.White)
+                        }
+                    }
+                    if (estado.pagos.isEmpty()) item { Etiqueta("No tienes pagos pendientes.") }
+                    items(estado.pagos, key = { it.pago.id }) { fila ->
+                        val pago = fila.pago
+                        val vencimiento = fila.diaVencimiento(fecha)
+                        Tarjeta(Modifier.fillMaxWidth(), relleno = 13, espacio = 10, alPulsar = { verPago(pago.id) }) {
+                            FilaDato(
+                                pago.descripcion, "Vence el ${fechaEnPantalla(vencimiento)}", montoEnPantalla(pago.monto),
+                                "calendar", AzulNoche, FondoSelector,
+                            )
+                            EstadoVencimiento(vencimiento, fecha.hoy)
                         }
                     }
                 }
@@ -39,35 +72,42 @@ internal fun PantallaPagos(verCalendario: () -> Unit, verHistorial: () -> Unit, 
 }
 
 @Composable
-internal fun PantallaNuevoPago(volver: () -> Unit) {
-    val pago = DatosDeEjemplo.pagos[1]
+internal fun PantallaDetallePago(
+    estado: EstadoPagosPendientes,
+    id: Int,
+    fecha: FechaLocal,
+    reintentar: () -> Unit,
+    volver: () -> Unit,
+) {
+    val fila = estado.pagos.firstOrNull { it.pago.id == id }
     Column(Modifier.fillMaxSize()) {
-        Cabecera("Nuevo pago pendiente", volver)
+        Cabecera("Detalle del pago", volver)
         Cuerpo(Modifier.weight(1f), espacio = 14) {
-            CampoDeEjemplo("Nombre del pago", "Cuota notebook")
-            CampoDeEjemplo("Monto", pago.monto)
-            CampoDeEjemplo("Fecha de vencimiento", "05 de noviembre de 2026", "calendar")
-            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Etiqueta("Tipo de obligación")
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Pildora("Pago único")
-                    Pildora("Cuota", activa = true)
-                    Pildora("Tarjeta")
+            when {
+                estado.cargando -> Etiqueta("Cargando pago…")
+                estado.errorCarga -> {
+                    Etiqueta("No se pudo cargar el pago.")
+                    BotonPrincipal("Reintentar", alPulsar = reintentar)
                 }
-            }
-            CampoDeEjemplo("Cuotas", "4 de 12")
-            Tarjeta(Modifier.fillMaxWidth(), relleno = 14) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Column(Modifier.weight(1f)) {
-                        Destacado("Recordarme")
-                        Etiqueta("1 día antes del vencimiento")
+                fila == null -> Etiqueta("El pago ya no está disponible.")
+                else -> {
+                    val pago = fila.pago
+                    val vencimiento = fila.diaVencimiento(fecha)
+                    Tarjeta(Modifier.fillMaxWidth(), AzulNoche) {
+                        Etiqueta(if (pago.esCuota) "Cuota" else "Pago único", TextoSobreAzul)
+                        Destacado(pago.descripcion, Color.White)
+                        Cifra(montoEnPantalla(pago.monto), Color.White)
                     }
-                    Switch(checked = true, onCheckedChange = null)
+                    Tarjeta(Modifier.fillMaxWidth()) {
+                        Etiqueta("Fecha de vencimiento")
+                        Destacado(fechaEnPantalla(vencimiento))
+                        EstadoVencimiento(vencimiento, fecha.hoy)
+                        Etiqueta("Categoría de gasto")
+                        Destacado(fila.nombreCategoria ?: "Sin categoría")
+                    }
                 }
             }
-            Etiqueta("Un pago pendiente no se cuenta como gasto hasta que lo marques como pagado.")
         }
-        PieFormulario("Guardar pago pendiente")
     }
 }
 
@@ -101,52 +141,17 @@ internal fun PantallaHistorialPagos(volver: () -> Unit) {
     }
 }
 
-@Composable
-internal fun PantallaDetalleCuota(volver: () -> Unit) {
-    val fechas = listOf("05 oct", "05 nov", "05 dic", "05 ene")
-    Column(Modifier.fillMaxSize()) {
-        Cabecera("Cuota notebook", volver)
-        Cuerpo(Modifier.weight(1f)) {
-            Tarjeta(Modifier.fillMaxWidth(), AzulNoche, espacio = 6) {
-                Etiqueta("Cuota 4 de 12 · vence 05 nov", TextoSobreAzul)
-                Cifra(DatosDeEjemplo.pagos[1].monto, Color.White)
-                Progreso(25, VerdeMarca)
-                Etiqueta("3 de 12 cuotas pagadas", TextoSobreAzul)
-            }
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                Tarjeta(Modifier.weight(1f)) {
-                    Etiqueta("Pagado")
-                    Cifra("$195.000", VerdeIngreso, 18)
-                }
-                Tarjeta(Modifier.weight(1f)) {
-                    Etiqueta("Falta pagar")
-                    Cifra("$585.000", tamano = 18)
-                }
-            }
-            Destacado("Calendario de cuotas")
-            fechas.forEachIndexed { indice, fecha ->
-                val pagada = indice == 0
-                val color = if (pagada) VerdeIngreso else NaranjaAlerta
-                val fondo = if (pagada) FondoIngreso else FondoAlerta
-                Tarjeta(Modifier.fillMaxWidth(), relleno = 11) {
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Insignia(if (pagada) "check" else "calendar", color, fondo, tamano = 29)
-                        Column(Modifier.weight(1f)) {
-                            Destacado("Cuota ${indice + 3} de 12")
-                            Etiqueta("Vence $fecha")
-                        }
-                        Destacado(DatosDeEjemplo.pagos[1].monto)
-                        EstadoPago(if (pagada) "Pagada" else "Pendiente", color, fondo)
-                    }
-                }
-            }
-        }
-        PieFormulario("Marcar cuota como pagada")
-    }
-}
+private fun PagoConCategoria.diaVencimiento(fecha: FechaLocal): LocalDate =
+    pago.fechaVencimiento.toInstant().atZone(fecha.zona).toLocalDate()
 
 @Composable
-private fun EstadoPago(texto: String, color: Color, fondo: Color) {
+private fun EstadoVencimiento(vencimiento: LocalDate, hoy: LocalDate) {
+    val (texto, color, fondo) = when {
+        vencimiento < hoy -> Triple("Vencido", RojoGasto, FondoGasto)
+        vencimiento == hoy -> Triple("Vence hoy", NaranjaAlerta, FondoAlerta)
+        vencimiento == hoy.plusDays(1) -> Triple("Vence mañana", NaranjaAlerta, FondoAlerta)
+        else -> Triple("Pendiente", AzulNoche, FondoSelector)
+    }
     Surface(color = fondo, shape = RoundedCornerShape(12.dp)) {
         Etiqueta(texto, color, Modifier.padding(horizontal = 10.dp, vertical = 3.dp))
     }

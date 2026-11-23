@@ -10,7 +10,6 @@ internal object DatosDeEjemplo {
     const val gastos = "$842.300"
     const val presupuestoTotal = "$910.000"
     const val presupuestoDisponible = "$67.700"
-    const val porPagar = "$209.990"
 
     val presupuestoOcio = PresupuestoEjemplo("Ocio", "$142.800", "$120.000", 119, "play", RojoGasto, FondoGasto)
     const val excesoOcio = "$22.800"
