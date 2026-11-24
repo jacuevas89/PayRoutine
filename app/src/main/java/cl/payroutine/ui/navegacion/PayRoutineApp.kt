@@ -43,7 +43,7 @@ import cl.payroutine.viewmodel.EstadoCategorias
 import cl.payroutine.viewmodel.EstadoBorrado
 import cl.payroutine.viewmodel.EstadoEdicionPerfil
 import cl.payroutine.viewmodel.EstadoEliminacionMovimiento
-import cl.payroutine.viewmodel.EstadoPagosPendientes
+import cl.payroutine.viewmodel.EstadoPagos
 import cl.payroutine.viewmodel.EstadoPerfil
 import cl.payroutine.viewmodel.FechaLocal
 import cl.payroutine.viewmodel.FinanzasViewModel
@@ -84,7 +84,7 @@ internal fun PayRoutineApp(perfil: PerfilViewModel, finanzas: FinanzasViewModel,
     val estadoCategorias by categorias.estado.collectAsState()
     val perfilActivo = estado.usuario != null && !estado.errorCarga
     val inicio = if (perfilActivo) finanzas.inicio.collectAsState().value else null
-    val pagosPendientes = if (perfilActivo) finanzas.pagosPendientes.collectAsState().value else EstadoPagosPendientes()
+    val estadoPagos = if (perfilActivo) finanzas.estadoPagos.collectAsState().value else EstadoPagos()
     NavegacionPayRoutine(
         estado = estado,
         inicio = inicio,
@@ -97,7 +97,7 @@ internal fun PayRoutineApp(perfil: PerfilViewModel, finanzas: FinanzasViewModel,
         guardarEdicion = perfil::guardarEdicion,
         eliminarDatos = perfil::eliminarTodosLosDatos,
         limpiarErrorBorrado = perfil::limpiarErrorBorrado,
-        pagosPendientes = pagosPendientes,
+        estadoPagos = estadoPagos,
         reintentarPagos = finanzas::reintentarPagos,
         registrar = perfil::registrar,
     )
@@ -116,7 +116,7 @@ internal fun NavegacionPayRoutine(
     limpiarErrorBorrado: () -> Unit = {},
     crearCategoria: (String, TipoMovimiento) -> Unit = { _, _ -> },
     limpiarCreacionCategoria: () -> Unit = {},
-    pagosPendientes: EstadoPagosPendientes = EstadoPagosPendientes(),
+    estadoPagos: EstadoPagos = EstadoPagos(),
     reintentarPagos: () -> Unit = {},
     registrar: (String, String) -> Unit,
 ) {
@@ -131,7 +131,7 @@ internal fun NavegacionPayRoutine(
             usuario, inicio, estado.edicion, estado.borrado,
             prepararEdicion, guardarEdicion, eliminarDatos, limpiarErrorBorrado,
             categorias, reintentarCategorias, crearCategoria, limpiarCreacionCategoria,
-            pagosPendientes, reintentarPagos,
+            estadoPagos, reintentarPagos,
         )
     }
 }
@@ -150,7 +150,7 @@ private fun NavegacionPrincipal(
     reintentarCategorias: () -> Unit,
     crearCategoria: (String, TipoMovimiento) -> Unit,
     limpiarCreacionCategoria: () -> Unit,
-    pagosPendientes: EstadoPagosPendientes,
+    estadoPagos: EstadoPagos,
     reintentarPagos: () -> Unit,
 ) {
     val navegador = rememberNavController()
@@ -160,7 +160,7 @@ private fun NavegacionPrincipal(
     val borradoActual by rememberUpdatedState(borrado)
     val datosActuales by rememberUpdatedState(inicio)
     val categoriasActuales by rememberUpdatedState(categorias)
-    val pagosActuales by rememberUpdatedState(pagosPendientes)
+    val pagosActuales by rememberUpdatedState(estadoPagos)
     val fechaPagos by rememberUpdatedState(inicio?.fecha ?: FechaLocal(LocalDate.now(), ZoneId.systemDefault()))
     val rutaActual = entradaActual?.destination?.route ?: Seccion.Inicio.ruta
     val seccionActual = Seccion.entries.firstOrNull { it.ruta == rutaActual }
@@ -297,7 +297,9 @@ private fun NavegacionPrincipal(
                     LaunchedEffect(estadoRegistro.idGuardado) {
                         if (estadoRegistro.idGuardado != null) volver(origen)
                     }
-                    PantallaNuevoPago(categoriasActuales, reintentarCategorias, estadoRegistro, registro::guardar) { volver(origen) }
+                    PantallaNuevoPago(
+                        categoriasActuales, reintentarCategorias, estadoRegistro, registro::guardar, registro::guardarDeuda,
+                    ) { volver(origen) }
                 }
                 composable(PRESUPUESTO_EXCEDIDO) { origen ->
                     PantallaPresupuestoExcedido(volver = { volver(origen) }, editar = { abrir(origen, EDITAR_PRESUPUESTO) })

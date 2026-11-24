@@ -18,7 +18,7 @@ import cl.payroutine.ui.theme.PayRoutineTheme
 import cl.payroutine.viewmodel.EstadoPerfil
 import cl.payroutine.viewmodel.EstadoEdicionPerfil
 import cl.payroutine.viewmodel.EstadoBorrado
-import cl.payroutine.viewmodel.EstadoPagosPendientes
+import cl.payroutine.viewmodel.EstadoPagos
 import cl.payroutine.viewmodel.FechaLocal
 import cl.payroutine.viewmodel.calcularInicio
 import java.time.LocalDate
@@ -262,7 +262,7 @@ class NavegacionPayRoutineTest {
             PayRoutineTheme {
                 NavegacionPayRoutine(
                     EstadoPerfil(cargando = false, usuario = usuario), inicio, {},
-                    pagosPendientes = EstadoPagosPendientes(
+                    estadoPagos = EstadoPagos(
                         cargando = false,
                         pagos = inicio.pagosPendientes.map { PagoConCategoria(it.pago, "Servicios") },
                     ),

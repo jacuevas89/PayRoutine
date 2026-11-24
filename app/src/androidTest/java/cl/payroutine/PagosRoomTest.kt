@@ -7,8 +7,13 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import cl.payroutine.datos.local.BaseDatosPayRoutine
 import cl.payroutine.datos.local.entidad.TipoMovimiento
+import cl.payroutine.datos.repositorio.AjusteCuota
+import cl.payroutine.datos.repositorio.NuevaDeudaEnCuotas
 import cl.payroutine.datos.repositorio.NuevoPagoUnico
+import cl.payroutine.datos.repositorio.PeriodicidadCuotas
 import cl.payroutine.datos.repositorio.RepositorioFinanzas
+import cl.payroutine.datos.repositorio.generarCronogramaCuotas
+import cl.payroutine.viewmodel.EstadoPagos
 import cl.payroutine.viewmodel.FechaLocal
 import cl.payroutine.viewmodel.observarInicio
 import kotlinx.coroutines.flow.first
@@ -27,6 +32,39 @@ import org.junit.runner.RunWith
 class PagosRoomTest {
     private val instrumentacion = InstrumentationRegistry.getInstrumentation()
     private val contexto = instrumentacion.targetContext
+
+    @Test
+    fun registraCuatroDeDoceComoAntecedentesYLaQuintaQuedaPendienteSinAfectarElSaldo() = runBlocking {
+        val base = Room.inMemoryDatabaseBuilder(contexto, BaseDatosPayRoutine::class.java).build()
+        try {
+            val repositorio = RepositorioFinanzas(base)
+            repositorio.prepararCategoriasIniciales()
+            val categoria = repositorio.observarCategorias().first().single { it.nombre == "Hogar" }
+            val zona = ZoneId.systemDefault()
+            val hoy = LocalDate.now(zona)
+            val primera = hoy.withDayOfMonth(1).minusMonths(4)
+            val cronograma = generarCronogramaCuotas(100000, 12, primera, PeriodicidadCuotas.Mensual, AjusteCuota.Ultima)
+            val deuda = NuevaDeudaEnCuotas("Notebook", 100000, categoria.id, 4, cronograma)
+            repositorio.registrarDeuda(deuda)
+            repositorio.registrarDeuda(deuda.copy(nombre = "Deuda anterior", cuotasPagadas = 12))
+
+            val estado = EstadoPagos(cargando = false, pagos = repositorio.observarPagosConCategoria().first())
+            val cuotas = estado.cuotasPorObligacion.values.single { it.first().nombreObligacion == "Notebook" }
+            assertEquals((1..12).toList(), cuotas.map { it.pago.cuotaActual })
+            assertTrue(cuotas.all { it.pago.totalCuotas == 12 && it.nombreCategoria == "Hogar" })
+            assertEquals(4, cuotas.count { it.pago.pagado })
+            assertEquals(33332L, cuotas.filter { it.pago.pagado }.sumOf { it.pago.monto.toLong() })
+            assertEquals(66668L, estado.pendientes.sumOf { it.pago.monto.toLong() })
+            assertEquals((5..12).toList(), estado.pendientes.map { it.pago.cuotaActual })
+            assertEquals("Deuda anterior", estado.deudasSaldadas.single().nombreObligacion)
+            val inicio = repositorio.observarInicio(flowOf(FechaLocal(hoy, zona))).first()
+            assertEquals(5, inicio.pagosPendientes.single().pago.cuotaActual)
+            assertTrue(repositorio.observarMovimientos().first().isEmpty())
+            assertEquals(BigDecimal.ZERO, inicio.saldo)
+        } finally {
+            base.close()
+        }
+    }
 
     @Test
     fun registraPagosOrdenadosYLosReflejaEnInicioSinAfectarElSaldo() = runBlocking {

@@ -13,6 +13,7 @@ import cl.payroutine.datos.local.normalizarNombreCategoria
 import java.time.LocalDate
 import java.time.ZoneId
 import java.util.Date
+import kotlinx.coroutines.flow.map
 
 class RepositorioFinanzas(private val baseDatos: BaseDatosPayRoutine) {
     private val categoriaDao = baseDatos.categoriaDao()
@@ -57,16 +58,14 @@ class RepositorioFinanzas(private val baseDatos: BaseDatosPayRoutine) {
     fun observarMovimientosConCategoria() = movimientoDao.observarConCategoria()
     fun observarPresupuestos() = presupuestoDao.observarTodos()
     fun observarPagos() = pagoPendienteDao.observarTodos()
-    fun observarPagosPendientes() = pagoPendienteDao.observarPendientesConCategoria()
+    fun observarPagosConCategoria() = pagoPendienteDao.observarConCategoria()
+    fun observarPagosPendientes() = observarPagosConCategoria().map { pagos -> pagos.filterNot { it.pago.pagado } }
 
     suspend fun registrarPagoUnico(datos: NuevoPagoUnico): Long = baseDatos.withTransaction {
-        require(datos.nombre.isNotBlank()) { "El nombre del pago es obligatorio" }
         require(datos.monto in 1..MONTO_MAXIMO_EXACTO) { "El monto debe ser un número positivo de pesos enteros" }
-        val categoria = categoriaDao.buscarPorId(datos.categoriaId)
-        require(categoria?.tipo == TipoMovimiento.Gasto) { "Selecciona una categoría de gasto" }
         val nombre = datos.nombre.trim()
         val vencimiento = Date.from(datos.vencimiento.atStartOfDay(ZoneId.systemDefault()).toInstant())
-        val obligacionId = obligacionPagoDao.insertar(ObligacionPago(nombre = nombre, categoriaId = datos.categoriaId)).toInt()
+        val obligacionId = registrarObligacion(nombre, datos.categoriaId)
         pagoPendienteDao.insertar(
             PagoPendiente(
                 descripcion = nombre,
@@ -77,6 +76,35 @@ class RepositorioFinanzas(private val baseDatos: BaseDatosPayRoutine) {
                 obligacionId = obligacionId,
             ),
         )
+    }
+
+    internal suspend fun registrarDeuda(datos: NuevaDeudaEnCuotas): Long = baseDatos.withTransaction {
+        validarCronogramaCuotas(datos)
+        val nombre = datos.nombre.trim()
+        val obligacionId = registrarObligacion(nombre, datos.categoriaId)
+        val zona = ZoneId.systemDefault()
+        val cantidad = datos.cronograma.size
+        val vencimientos = datos.cronograma.mapIndexed { indice, cuota ->
+            val numero = indice + 1
+            PagoPendiente(
+                descripcion = "$nombre · Cuota $numero de $cantidad",
+                monto = cuota.monto.toDouble(),
+                fechaVencimiento = Date.from(cuota.vencimiento.atStartOfDay(zona).toInstant()),
+                esCuota = true,
+                cuotaActual = numero,
+                totalCuotas = cantidad,
+                pagado = numero <= datos.cuotasPagadas,
+                obligacionId = obligacionId,
+            )
+        }
+        pagoPendienteDao.insertarTodas(vencimientos).first()
+    }
+
+    private suspend fun registrarObligacion(nombre: String, categoriaId: Int): Int {
+        require(nombre.isNotBlank()) { "El nombre del pago es obligatorio" }
+        val categoria = categoriaDao.buscarPorId(categoriaId)
+        require(categoria?.tipo == TipoMovimiento.Gasto) { "Selecciona una categoría de gasto" }
+        return obligacionPagoDao.insertar(ObligacionPago(nombre = nombre, categoriaId = categoriaId)).toInt()
     }
 
     suspend fun eliminarTodosLosDatos() = baseDatos.withTransaction {

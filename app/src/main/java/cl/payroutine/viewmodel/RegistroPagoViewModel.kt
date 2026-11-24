@@ -6,6 +6,7 @@ import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import cl.payroutine.PayRoutineApplication
+import cl.payroutine.datos.repositorio.NuevaDeudaEnCuotas
 import cl.payroutine.datos.repositorio.NuevoPagoUnico
 import cl.payroutine.datos.repositorio.RepositorioFinanzas
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -27,18 +28,22 @@ internal class RegistroPagoViewModel(
     private val estadoInterno = MutableStateFlow(EstadoRegistroPago())
     val estado = estadoInterno.asStateFlow()
 
-    fun guardar(datos: NuevoPagoUnico) {
+    fun guardar(datos: NuevoPagoUnico) = ejecutarGuardado { repositorio.registrarPagoUnico(datos) }
+
+    fun guardarDeuda(datos: NuevaDeudaEnCuotas) = ejecutarGuardado { repositorio.registrarDeuda(datos) }
+
+    private fun ejecutarGuardado(guardar: suspend () -> Long) {
         val actual = estadoInterno.value
         if (actual.guardando || actual.idGuardado != null) return
         estadoInterno.value = EstadoRegistroPago(guardando = true)
         viewModelScope.launch {
             try {
-                estadoInterno.value = EstadoRegistroPago(idGuardado = repositorio.registrarPagoUnico(datos))
+                estadoInterno.value = EstadoRegistroPago(idGuardado = guardar())
             } catch (error: SQLiteException) {
                 Log.e("RegistroPago", "Error al guardar el pago pendiente", error)
                 estadoInterno.value = EstadoRegistroPago(error = "No se pudo guardar el pago. Vuelve a intentarlo.")
             } catch (error: IllegalArgumentException) {
-                estadoInterno.value = EstadoRegistroPago(error = "Revisa el nombre, el monto y la categoría del pago.")
+                estadoInterno.value = EstadoRegistroPago(error = error.message ?: "Revisa los datos del pago.")
             }
         }
     }

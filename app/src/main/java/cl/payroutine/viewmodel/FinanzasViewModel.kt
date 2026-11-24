@@ -30,11 +30,18 @@ import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 
-internal data class EstadoPagosPendientes(
+internal data class EstadoPagos(
     val cargando: Boolean = true,
     val pagos: List<PagoConCategoria> = emptyList(),
     val errorCarga: Boolean = false,
-)
+) {
+    val pendientes = pagos.filterNot { it.pago.pagado }
+    val cuotasPorObligacion = pagos.filter { it.pago.esCuota && it.pago.obligacionId != null }
+        .groupBy { it.pago.obligacionId }
+    val deudasSaldadas = cuotasPorObligacion.values.mapNotNull { cuotas ->
+        cuotas.firstOrNull()?.takeIf { cuotas.all { fila -> fila.pago.pagado } }
+    }
+}
 
 class FinanzasViewModel(aplicacion: Application) : AndroidViewModel(aplicacion) {
     private val repositorio = (aplicacion as PayRoutineApplication).repositorio
@@ -50,19 +57,19 @@ class FinanzasViewModel(aplicacion: Application) : AndroidViewModel(aplicacion) 
     private val recargaPagos = MutableStateFlow(0)
 
     @OptIn(ExperimentalCoroutinesApi::class)
-    internal val pagosPendientes = recargaPagos.flatMapLatest {
-        repositorio.observarPagosPendientes()
-            .map { EstadoPagosPendientes(cargando = false, pagos = it) }
-            .onStart { emit(EstadoPagosPendientes()) }
+    internal val estadoPagos = recargaPagos.flatMapLatest {
+        repositorio.observarPagosConCategoria()
+            .map { EstadoPagos(cargando = false, pagos = it) }
+            .onStart { emit(EstadoPagos()) }
             .catch { error ->
                 if (error !is SQLiteException) throw error
-                Log.e("FinanzasViewModel", "Error al consultar los pagos pendientes", error)
-                emit(EstadoPagosPendientes(cargando = false, errorCarga = true))
+                Log.e("FinanzasViewModel", "Error al consultar los pagos", error)
+                emit(EstadoPagos(cargando = false, errorCarga = true))
             }
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(replayExpirationMillis = 0), EstadoPagosPendientes())
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(replayExpirationMillis = 0), EstadoPagos())
 
     fun reintentarPagos() {
-        if (pagosPendientes.value.errorCarga) recargaPagos.update { it + 1 }
+        if (estadoPagos.value.errorCarga) recargaPagos.update { it + 1 }
     }
 }
 

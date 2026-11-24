@@ -6,6 +6,8 @@ import androidx.compose.material3.DatePickerDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
@@ -16,11 +18,20 @@ import androidx.room.Room
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import cl.payroutine.datos.local.BaseDatosPayRoutine
+import cl.payroutine.datos.local.dao.PagoConCategoria
+import cl.payroutine.datos.local.entidad.PagoPendiente
+import cl.payroutine.datos.repositorio.CuotaProgramada
 import cl.payroutine.datos.repositorio.RepositorioFinanzas
 import cl.payroutine.ui.pantallas.PantallaNuevoPago
+import cl.payroutine.ui.pantallas.CuotaEditable
+import cl.payroutine.ui.pantallas.PantallaCronogramaCuotas
+import cl.payroutine.ui.pantallas.PantallaPagos
 import cl.payroutine.ui.pantallas.fechaEnPantalla
 import cl.payroutine.ui.theme.PayRoutineTheme
 import cl.payroutine.viewmodel.EstadoCategorias
+import cl.payroutine.viewmodel.EstadoPagos
+import cl.payroutine.viewmodel.EstadoRegistroPago
+import cl.payroutine.viewmodel.FechaLocal
 import cl.payroutine.viewmodel.RegistroPagoViewModel
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
@@ -28,6 +39,7 @@ import kotlinx.coroutines.runBlocking
 import java.time.LocalDate
 import java.time.ZoneId
 import java.time.ZoneOffset
+import java.util.Date
 import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
@@ -37,6 +49,71 @@ import org.junit.runner.RunWith
 class RegistroPagoPantallaTest {
     @get:Rule
     val compose = createAndroidComposeRule<ComponentActivity>()
+
+    @Test
+    fun etiquetaDePagoRespetaLosLimitesDeVencimiento() {
+        val fecha = FechaLocal(LocalDate.of(2026, 11, 29), ZoneOffset.UTC)
+        var vencimiento by mutableStateOf(fecha.hoy)
+        compose.setContent {
+            val pago = PagoPendiente(
+                id = 1,
+                descripcion = "Internet",
+                monto = 1000.0,
+                fechaVencimiento = Date.from(vencimiento.atStartOfDay(fecha.zona).toInstant()),
+                esCuota = false,
+                pagado = false,
+            )
+            PayRoutineTheme {
+                PantallaPagos(
+                    estado = EstadoPagos(cargando = false, pagos = listOf(PagoConCategoria(pago, "Servicios"))),
+                    fecha = fecha,
+                    reintentar = {},
+                    verCalendario = {},
+                    verHistorial = {},
+                    verPago = {},
+                )
+            }
+        }
+
+        val casos = listOf(
+            -1L to "Vencido",
+            0L to "Vence hoy",
+            1L to "Vence mañana",
+            2L to "Vence en 2 días",
+            7L to "Vence en 7 días",
+            8L to "Vence en 2 semanas",
+            14L to "Vence en 2 semanas",
+            15L to "Pendiente",
+        )
+        for ((dias, etiqueta) in casos) {
+            compose.runOnIdle { vencimiento = fecha.hoy.plusDays(dias) }
+            compose.onNodeWithText(etiqueta).assertIsDisplayed()
+        }
+    }
+
+    @Test
+    fun laVistaPreviaPermiteEditarCuotasPeroExigeQueElTotalCuadre() {
+        val primera = LocalDate.of(2027, 1, 31)
+        var cuotas by mutableStateOf(listOf(CuotaEditable(primera, "1000"), CuotaEditable(primera.plusMonths(1), "1000")))
+        var guardado: List<CuotaProgramada>? = null
+        compose.setContent {
+            PayRoutineTheme {
+                PantallaCronogramaCuotas(
+                    cuotas = cuotas, montoTotal = 2000, cuotasPagadas = 1,
+                    categoriaDisponible = true, estado = EstadoRegistroPago(),
+                    cambiarCuota = { i, cuota -> cuotas = cuotas.toMutableList().apply { this[i] = cuota } },
+                    guardar = { guardado = it }, volver = {},
+                )
+            }
+        }
+        compose.onNodeWithText("Ya pagada").assertExists()
+        compose.onNode(hasSetTextAction() and hasText("Monto de la cuota 1")).performTextReplacement("800")
+        compose.onNodeWithText("Guardar deuda").assertIsNotEnabled()
+        compose.onNode(hasScrollToIndexAction()).performScrollToIndex(2)
+        compose.onNode(hasSetTextAction() and hasText("Monto de la cuota 2")).performTextReplacement("1200")
+        compose.onNodeWithText("Guardar deuda").performClick()
+        assertEquals(listOf(CuotaProgramada(primera, 800), CuotaProgramada(primera.plusMonths(1), 1200)), guardado)
+    }
 
     @Test
     @OptIn(ExperimentalMaterial3Api::class)
@@ -53,7 +130,7 @@ class RegistroPagoPantallaTest {
             compose.setContent {
                 val estadoCategorias by categorias.collectAsState(EstadoCategorias())
                 val estadoRegistro by registro.estado.collectAsState()
-                PayRoutineTheme { PantallaNuevoPago(estadoCategorias, {}, estadoRegistro, registro::guardar) {} }
+                PayRoutineTheme { PantallaNuevoPago(estadoCategorias, {}, estadoRegistro, registro::guardar, registro::guardarDeuda) {} }
             }
             compose.waitUntil(10000) { compose.onAllNodesWithText("Servicios").fetchSemanticsNodes().isNotEmpty() }
             compose.onNodeWithText("Sueldo").assertDoesNotExist()

@@ -12,6 +12,7 @@ import kotlinx.coroutines.flow.Flow
 data class PagoConCategoria(
     @Embedded val pago: PagoPendiente,
     val nombreCategoria: String?,
+    val nombreObligacion: String? = null,
 )
 
 @Dao
@@ -23,17 +24,19 @@ interface PagoPendienteDao {
     fun observarTodos(): Flow<List<PagoPendiente>>
 
     @Query("""
-        SELECT p.*, c.nombre AS nombreCategoria
+        SELECT p.*, c.nombre AS nombreCategoria, o.nombre AS nombreObligacion
         FROM PagoPendiente p
         LEFT JOIN ObligacionPago o ON o.id = p.obligacion_id
         LEFT JOIN Categoria c ON c.id = o.categoria_id
-        WHERE p.pagado = 0
         ORDER BY p.fecha_vencimiento, p.id
     """)
-    fun observarPendientesConCategoria(): Flow<List<PagoConCategoria>>
+    fun observarConCategoria(): Flow<List<PagoConCategoria>>
 
     @Insert
     suspend fun insertar(entidad: PagoPendiente): Long
+
+    @Insert
+    suspend fun insertarTodas(entidades: List<PagoPendiente>): List<Long>
 
     @Update
     suspend fun actualizar(entidad: PagoPendiente): Int
