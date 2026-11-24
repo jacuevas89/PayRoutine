@@ -360,37 +360,7 @@ private fun AccionVencimiento(fila: PagoConCategoria, operar: () -> Unit) {
     }
 }
 
-@Composable
-internal fun PantallaHistorialPagos(volver: () -> Unit) {
-    val pagos = DatosDeEjemplo.pagos
-    val historial = listOf(
-        Triple(pagos[0].nombre, "Pagado 02 oct", pagos[0].monto),
-        Triple("Cuota notebook (3 de 12)", "Pagado 05 oct", pagos[1].monto),
-        Triple(pagos[2].nombre, "Pagado 10 oct", pagos[2].monto),
-        Triple("Cuenta de luz", "Pagado 15 oct", "$45.200"),
-    )
-    Column {
-        Cabecera("Historial de pagos", volver)
-        Cuerpo {
-            Segmentos(listOf("Pendientes", "Pagados"), 1) { if (it == 0) volver() }
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Pildora("Octubre", activa = true)
-                Pildora("Septiembre")
-                Pildora("Agosto")
-            }
-            Tarjeta(Modifier.fillMaxWidth()) {
-                Etiqueta("Pagado en octubre")
-                Cifra("$255.190", VerdeIngreso, 24)
-                Etiqueta("4 pagos realizados")
-            }
-            historial.forEach { (nombre, fecha, monto) ->
-                FilaTarjeta(nombre, fecha, monto, "check", VerdeIngreso, FondoIngreso)
-            }
-        }
-    }
-}
-
-private fun PagoConCategoria.diaVencimiento(fecha: FechaLocal): LocalDate =
+internal fun PagoConCategoria.diaVencimiento(fecha: FechaLocal): LocalDate =
     pago.fechaVencimiento.toInstant().atZone(fecha.zona).toLocalDate()
 
 private fun PagoPendiente.etiquetaCuota(): String =

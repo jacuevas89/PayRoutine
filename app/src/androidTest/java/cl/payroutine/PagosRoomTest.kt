@@ -64,6 +64,7 @@ class PagosRoomTest {
             assertEquals(TipoMovimiento.Gasto, gastoAgua.tipo)
             assertEquals(fechaPago, gastoLuz.fecha.toInstant().atZone(ZoneId.systemDefault()).toLocalDate())
             assertEquals("Comprobante", gastoLuz.nota)
+            assertEquals(gastoLuz.fecha, repositorio.observarPagosConCategoria().first().single { it.pago.id == luz }.fechaPago)
 
             val corregida = hoy.minusMonths(1)
             assertTrue(repositorio.editarMovimiento(
@@ -75,11 +76,14 @@ class PagosRoomTest {
             assertEquals(gastoLuz.categoriaId, editado.categoriaId)
             assertEquals(corregida, editado.fecha.toInstant().atZone(ZoneId.systemDefault()).toLocalDate())
             assertEquals("Nota nueva", editado.nota)
+            assertEquals(editado.fecha, repositorio.observarPagosConCategoria().first().single { it.pago.id == luz }.fechaPago)
             assertThrows(SQLiteException::class.java) { runBlocking { repositorio.eliminarMovimiento(gastoLuz.id) } }
 
             repositorio.deshacerPago(luz, gastoLuz.id)
             repositorio.deshacerPago(luz, gastoLuz.id)
-            assertEquals(luz, repositorio.observarPagosPendientes().first().single().pago.id)
+            val pendiente = repositorio.observarPagosPendientes().first().single()
+            assertEquals(luz, pendiente.pago.id)
+            assertNull(pendiente.fechaPago)
             assertEquals(gastoAgua, repositorio.observarMovimientos().first().single())
             repositorio.pagarVencimientos(listOf(luz), hoy, "")
             repositorio.deshacerPago(luz, gastoLuz.id)

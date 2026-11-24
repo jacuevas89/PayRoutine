@@ -5,7 +5,6 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Text
@@ -149,64 +148,16 @@ internal fun SelectorPeriodo(periodo: YearMonth, cerrar: () -> Unit, elegir: (Ye
 }
 
 @Composable
-internal fun PantallaCalendario(volver: () -> Unit) {
-    val dias = listOf("L", "M", "M", "J", "V", "S", "D")
-    val celdas: List<Int?> = List(6) { null } + (1..30).toList() + List(6) { null }
-    val pago = DatosDeEjemplo.pagos.first()
-    Column {
-        Cabecera("Calendario", volver)
-        Cuerpo {
-            SelectorMes("Noviembre 2026")
-            Tarjeta(Modifier.fillMaxWidth(), relleno = 12, espacio = 4) {
-                Row {
-                    dias.forEach { dia ->
-                        Box(Modifier.weight(1f).height(30.dp), contentAlignment = Alignment.Center) { Etiqueta(dia) }
-                    }
-                }
-                celdas.chunked(7).forEach { semana ->
-                    Row {
-                        semana.forEach { dia ->
-                            val elegido = dia == 2
-                            Box(
-                                Modifier.weight(1f).height(44.dp).background(
-                                    if (elegido) AzulNoche else Color.Transparent, RoundedCornerShape(12.dp),
-                                ),
-                                contentAlignment = Alignment.Center,
-                            ) {
-                                if (dia != null) {
-                                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                        Etiqueta(dia.toString(), if (elegido) Color.White else Texto)
-                                        if (dia in listOf(2, 5, 10)) {
-                                            Box(Modifier.size(5.dp).background(if (elegido) Color.White else NaranjaAlerta, CircleShape))
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-            Destacado("Vence el 2 de noviembre")
-            FilaTarjeta(pago.nombre, "Vence en 4 días", pago.monto, pago.icono, pago.color, pago.fondo)
-        }
-    }
-}
-
-@Composable
-private fun SelectorMes(
+internal fun SelectorMes(
     mes: String,
-    anterior: (() -> Unit)? = null,
-    siguiente: (() -> Unit)? = null,
-    elegir: (() -> Unit)? = null,
+    anterior: () -> Unit,
+    siguiente: () -> Unit,
+    elegir: () -> Unit,
 ) {
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
         BotonIcono("back", "Mes anterior", anterior)
-        if (elegir == null) {
+        TextButton(onClick = elegir, modifier = Modifier.semantics { contentDescription = "Elegir mes y año" }) {
             Cifra(mes, tamano = 17)
-        } else {
-            TextButton(onClick = elegir, modifier = Modifier.semantics { contentDescription = "Elegir mes y año" }) {
-                Cifra(mes, tamano = 17)
-            }
         }
         BotonIcono("next", "Mes siguiente", siguiente)
     }

@@ -13,6 +13,7 @@ import cl.payroutine.datos.local.entidad.PagoPendiente
 import cl.payroutine.datos.local.entidad.TipoMovimiento
 import cl.payroutine.datos.local.entidad.Usuario
 import cl.payroutine.ui.navegacion.NavegacionPayRoutine
+import cl.payroutine.ui.pantallas.fechaEnPantalla
 import cl.payroutine.ui.pantallas.montoEnPantalla
 import cl.payroutine.ui.theme.PayRoutineTheme
 import cl.payroutine.viewmodel.EstadoPerfil
@@ -248,7 +249,14 @@ class NavegacionPayRoutineTest {
         tocar("Próximo pago: Tarjeta de crédito")
         ver("Pagos pendientes")
         tocar("Calendario")
-        ver("Vence el 2 de noviembre")
+        ver("Noviembre 2026")
+        val vencimiento = fechaEnPantalla(fecha.hoy.plusDays(4))
+        compose.onNodeWithContentDescription("$vencimiento, con vencimientos pendientes").performClick()
+        ver("Vencimientos pendientes")
+        tocar("Tarjeta de crédito")
+        ver("Detalle del pago")
+        volver()
+        ver("Vencimientos pendientes")
         atrasAndroid()
         tocar("Pagados")
         ver("Historial de pagos")

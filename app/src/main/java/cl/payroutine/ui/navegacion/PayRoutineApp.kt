@@ -531,8 +531,23 @@ private fun NavegacionPrincipal(
                         actualizarPresupuesto = { recordatorios?.actualizarPresupuesto(usuario.id, it) },
                     ) { volver(origen) }
                 }
-                composable(CALENDARIO) { origen -> PantallaCalendario { volver(origen) } }
-                composable(HISTORIAL_PAGOS) { origen -> PantallaHistorialPagos { volver(origen) } }
+                composable(CALENDARIO) { origen ->
+                    PantallaCalendario(
+                        estado = pagosActuales,
+                        fecha = fechaPagos,
+                        reintentar = reintentarPagos,
+                        verPago = { abrir(origen, "$DETALLE_PAGO/$it") },
+                        verGasto = { abrir(origen, "$DETALLE_MOVIMIENTO/$it") },
+                    ) { volver(origen) }
+                }
+                composable(HISTORIAL_PAGOS) { origen ->
+                    PantallaHistorialPagos(
+                        estado = pagosActuales,
+                        fecha = fechaPagos,
+                        reintentar = reintentarPagos,
+                        verGasto = { abrir(origen, "$DETALLE_MOVIMIENTO/$it") },
+                    ) { volver(origen) }
+                }
                 composable(
                     "$DETALLE_PAGO/{id}",
                     arguments = listOf(navArgument("id") { type = NavType.IntType }),

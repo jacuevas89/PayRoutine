@@ -7,12 +7,14 @@ import androidx.room.Insert
 import androidx.room.Query
 import androidx.room.Update
 import cl.payroutine.datos.local.entidad.PagoPendiente
+import java.util.Date
 import kotlinx.coroutines.flow.Flow
 
 data class PagoConCategoria(
     @Embedded val pago: PagoPendiente,
     val nombreCategoria: String?,
     val nombreObligacion: String? = null,
+    val fechaPago: Date? = null,
 )
 
 @Dao
@@ -24,10 +26,11 @@ interface PagoPendienteDao {
     fun observarTodos(): Flow<List<PagoPendiente>>
 
     @Query("""
-        SELECT p.*, c.nombre AS nombreCategoria, o.nombre AS nombreObligacion
+        SELECT p.*, c.nombre AS nombreCategoria, o.nombre AS nombreObligacion, m.fecha AS fechaPago
         FROM PagoPendiente p
         LEFT JOIN ObligacionPago o ON o.id = p.obligacion_id
         LEFT JOIN Categoria c ON c.id = o.categoria_id
+        LEFT JOIN Movimiento m ON m.id = p.movimiento_id
         ORDER BY p.fecha_vencimiento, p.id
     """)
     fun observarConCategoria(): Flow<List<PagoConCategoria>>

@@ -41,7 +41,15 @@ internal data class EstadoPagos(
     val deudasSaldadas = cuotasPorObligacion.values.mapNotNull { cuotas ->
         cuotas.firstOrNull()?.takeIf { cuotas.all { fila -> fila.pago.pagado } }
     }
+
+    fun realizados(zona: ZoneId): List<PagoRealizado> = pagos.mapNotNull { fila ->
+        val movimientoId = fila.pago.movimientoId ?: return@mapNotNull null
+        val fechaPago = fila.fechaPago ?: return@mapNotNull null
+        PagoRealizado(fila, fechaPago.toInstant().atZone(zona).toLocalDate(), movimientoId)
+    }.sortedWith(compareByDescending<PagoRealizado> { it.fechaPago }.thenByDescending { it.movimientoId })
 }
+
+internal data class PagoRealizado(val fila: PagoConCategoria, val fechaPago: LocalDate, val movimientoId: Int)
 
 class FinanzasViewModel(aplicacion: Application) : AndroidViewModel(aplicacion) {
     private val repositorio = (aplicacion as PayRoutineApplication).repositorio
