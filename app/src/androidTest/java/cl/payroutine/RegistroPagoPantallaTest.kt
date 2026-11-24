@@ -51,6 +51,86 @@ class RegistroPagoPantallaTest {
     val compose = createAndroidComposeRule<ComponentActivity>()
 
     @Test
+    fun marcaPagadoDesdeLaTarjetaSinAbrirElDetalle() {
+        val fecha = FechaLocal(LocalDate.of(2026, 11, 29), ZoneOffset.UTC)
+        val pago = PagoPendiente(
+            id = 7, descripcion = "Internet", monto = 12000.0, esCuota = false, pagado = false,
+            fechaVencimiento = Date.from(fecha.hoy.atStartOfDay(fecha.zona).toInstant()),
+        )
+        var abrioDetalle = false
+        var pagados = emptyList<Int>()
+        compose.setContent {
+            PayRoutineTheme {
+                PantallaPagos(
+                    estado = EstadoPagos(cargando = false, pagos = listOf(PagoConCategoria(pago, "Servicios"))),
+                    fecha = fecha, reintentar = {}, verCalendario = {}, verHistorial = {},
+                    verPago = { abrioDetalle = true },
+                    pagar = { ids, _, _ -> pagados = ids },
+                )
+            }
+        }
+
+        compose.onNodeWithText("Marcar pagado").performClick()
+        compose.onNodeWithText("Confirmar pago").assertIsDisplayed()
+        assertEquals(emptyList<Int>(), pagados)
+        compose.onNodeWithText("Confirmar").performClick()
+        assertEquals(listOf(7), pagados)
+        assertEquals(false, abrioDetalle)
+    }
+
+    @Test
+    fun seleccionaDosVencimientosYRevisaElTotalAntesDeConfirmar() {
+        val fecha = FechaLocal(LocalDate.of(2026, 11, 29), ZoneOffset.UTC)
+        val filas = listOf("Internet" to 12000.0, "Agua" to 8000.0, "Seguro" to 15000.0).mapIndexed { indice, (nombre, monto) ->
+            val dia = if (indice == 2) fecha.hoy.plusMonths(2) else fecha.hoy.plusDays(indice.toLong() + 3)
+            PagoConCategoria(PagoPendiente(
+                id = indice + 1, descripcion = nombre, monto = monto, esCuota = false, pagado = false,
+                fechaVencimiento = Date.from(dia.atStartOfDay(fecha.zona).toInstant()),
+            ), "Servicios")
+        }
+        var guardado: Pair<List<Int>, LocalDate>? = null
+        compose.setContent {
+            PayRoutineTheme {
+                PantallaPagos(
+                    estado = EstadoPagos(cargando = false, pagos = filas),
+                    fecha = fecha, reintentar = {}, verCalendario = {}, verHistorial = {}, verPago = {},
+                    pagar = { ids, dia, _ -> guardado = ids to dia },
+                )
+            }
+        }
+
+        val botonSeleccion = compose.onNodeWithText("Selección múltiple")
+        val posicionSeleccion = botonSeleccion.getUnclippedBoundsInRoot().top
+        botonSeleccion.performClick()
+        val revisar = compose.onNodeWithText("Revisar pagos (0)")
+        revisar.assertIsNotEnabled()
+        assertEquals(posicionSeleccion, revisar.getUnclippedBoundsInRoot().top)
+        compose.onNodeWithText("Cancelar").performClick()
+        botonSeleccion.assertIsDisplayed().performClick()
+
+        val lista = compose.onNode(hasScrollToIndexAction())
+        lista.performScrollToNode(hasText("Diciembre 2026"))
+        compose.onAllNodesWithText("Diciembre 2026").assertCountEquals(1)
+        lista.performScrollToNode(hasText("Internet"))
+        val internet = compose.onNodeWithText("Internet")
+        internet.assertIsOff().performClick().assertIsOn()
+        internet.performClick().assertIsOff()
+        internet.performClick()
+        lista.performScrollToNode(hasText("Enero 2027"))
+        compose.onNodeWithText("Enero 2027").assertIsDisplayed()
+        lista.performScrollToNode(hasText("Seguro"))
+        compose.onNodeWithText("Seguro").performClick()
+        compose.onNodeWithText("Revisar pagos (2)").performClick()
+        compose.onNodeWithText("Confirmar pagos").assertIsDisplayed()
+        compose.onNodeWithText("$27.000").assertIsDisplayed()
+        compose.onNodeWithText(fechaEnPantalla(fecha.hoy)).assertIsDisplayed()
+        assertEquals(null, guardado)
+
+        compose.onNodeWithText("Confirmar").performClick()
+        assertEquals(listOf(1, 3) to fecha.hoy, guardado)
+    }
+
+    @Test
     fun etiquetaDePagoRespetaLosLimitesDeVencimiento() {
         val fecha = FechaLocal(LocalDate.of(2026, 11, 29), ZoneOffset.UTC)
         var vencimiento by mutableStateOf(fecha.hoy)

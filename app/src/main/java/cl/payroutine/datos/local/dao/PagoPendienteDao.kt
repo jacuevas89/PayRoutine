@@ -32,6 +32,24 @@ interface PagoPendienteDao {
     """)
     fun observarConCategoria(): Flow<List<PagoConCategoria>>
 
+    @Query("SELECT * FROM PagoPendiente WHERE id = :id")
+    suspend fun buscarPorId(id: Int): PagoPendiente?
+
+    @Query("SELECT id FROM PagoPendiente WHERE movimiento_id = :movimientoId")
+    suspend fun buscarIdPorMovimiento(movimientoId: Int): Int?
+
+    @Query("""
+        UPDATE PagoPendiente SET pagado = 1, movimiento_id = :movimientoId
+        WHERE id = :id AND pagado = 0 AND movimiento_id IS NULL
+    """)
+    suspend fun marcarPagado(id: Int, movimientoId: Int): Int
+
+    @Query("""
+        UPDATE PagoPendiente SET pagado = 0, movimiento_id = NULL
+        WHERE id = :id AND pagado = 1 AND movimiento_id = :movimientoId
+    """)
+    suspend fun deshacerPago(id: Int, movimientoId: Int): Int
+
     @Insert
     suspend fun insertar(entidad: PagoPendiente): Long
 

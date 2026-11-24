@@ -10,6 +10,9 @@ interface ObligacionPagoDao {
     @Insert
     suspend fun insertar(obligacion: ObligacionPago): Long
 
+    @Query("SELECT categoria_id FROM ObligacionPago WHERE id = :id")
+    suspend fun obtenerCategoria(id: Int): Int?
+
     @Query("DELETE FROM ObligacionPago")
     suspend fun eliminarTodas()
 }

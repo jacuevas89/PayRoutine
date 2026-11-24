@@ -6,9 +6,11 @@ import androidx.room.Room
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import cl.payroutine.datos.local.BaseDatosPayRoutine
+import cl.payroutine.datos.local.entidad.PagoPendiente
 import cl.payroutine.datos.local.entidad.TipoMovimiento
 import cl.payroutine.datos.repositorio.AjusteCuota
 import cl.payroutine.datos.repositorio.NuevaDeudaEnCuotas
+import cl.payroutine.datos.repositorio.NuevoMovimiento
 import cl.payroutine.datos.repositorio.NuevoPagoUnico
 import cl.payroutine.datos.repositorio.PeriodicidadCuotas
 import cl.payroutine.datos.repositorio.RepositorioFinanzas
@@ -16,6 +18,8 @@ import cl.payroutine.datos.repositorio.generarCronogramaCuotas
 import cl.payroutine.viewmodel.EstadoPagos
 import cl.payroutine.viewmodel.FechaLocal
 import cl.payroutine.viewmodel.observarInicio
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.runBlocking
@@ -23,6 +27,7 @@ import java.math.BigDecimal
 import java.time.LocalDate
 import java.time.YearMonth
 import java.time.ZoneId
+import java.util.Date
 import java.util.UUID
 import org.json.JSONObject
 import org.junit.Assert.*
@@ -33,6 +38,86 @@ import org.junit.runner.RunWith
 class PagosRoomTest {
     private val instrumentacion = InstrumentationRegistry.getInstrumentation()
     private val contexto = instrumentacion.targetContext
+
+    @Test
+    fun pagaVariosUnaSolaVezYPermiteEditarYDeshacerUnGasto() = runBlocking {
+        val base = Room.inMemoryDatabaseBuilder(contexto, BaseDatosPayRoutine::class.java).build()
+        try {
+            val repositorio = RepositorioFinanzas(base)
+            repositorio.prepararCategoriasIniciales()
+            val categorias = repositorio.observarCategorias().first().filter { it.tipo == TipoMovimiento.Gasto }
+            val hoy = LocalDate.now()
+            val fechaPago = hoy.minusDays(1)
+            val luz = repositorio.registrarPagoUnico(NuevoPagoUnico("Luz", 19000, hoy, categorias[0].id)).toInt()
+            val agua = repositorio.registrarPagoUnico(NuevoPagoUnico("Agua", 11000, hoy.plusDays(1), categorias[1].id)).toInt()
+            val seleccion = listOf(luz, agua, luz)
+
+            List(2) { async { repositorio.pagarVencimientos(seleccion, fechaPago, "  Comprobante  ") } }.awaitAll()
+
+            val gastos = repositorio.observarMovimientosConCategoria().first().associateBy { it.pagoId }
+            assertEquals(setOf(luz, agua), gastos.keys)
+            assertTrue(repositorio.observarPagosPendientes().first().isEmpty())
+            val gastoLuz = gastos.getValue(luz).movimiento
+            val gastoAgua = gastos.getValue(agua).movimiento
+            assertEquals(19000.0, gastoLuz.monto, 0.0)
+            assertEquals(categorias[1].id, gastoAgua.categoriaId)
+            assertEquals(TipoMovimiento.Gasto, gastoAgua.tipo)
+            assertEquals(fechaPago, gastoLuz.fecha.toInstant().atZone(ZoneId.systemDefault()).toLocalDate())
+            assertEquals("Comprobante", gastoLuz.nota)
+
+            val corregida = hoy.minusMonths(1)
+            assertTrue(repositorio.editarMovimiento(
+                gastoLuz.id, NuevoMovimiento("Otro monto", TipoMovimiento.Gasto, 1, corregida, categorias[1].id, "Nota nueva"),
+            ))
+            val editado = repositorio.observarMovimientosConCategoria().first().single { it.pagoId == luz }.movimiento
+            assertEquals(gastoLuz.nombre, editado.nombre)
+            assertEquals(gastoLuz.monto, editado.monto, 0.0)
+            assertEquals(gastoLuz.categoriaId, editado.categoriaId)
+            assertEquals(corregida, editado.fecha.toInstant().atZone(ZoneId.systemDefault()).toLocalDate())
+            assertEquals("Nota nueva", editado.nota)
+            assertThrows(SQLiteException::class.java) { runBlocking { repositorio.eliminarMovimiento(gastoLuz.id) } }
+
+            repositorio.deshacerPago(luz, gastoLuz.id)
+            repositorio.deshacerPago(luz, gastoLuz.id)
+            assertEquals(luz, repositorio.observarPagosPendientes().first().single().pago.id)
+            assertEquals(gastoAgua, repositorio.observarMovimientos().first().single())
+            repositorio.pagarVencimientos(listOf(luz), hoy, "")
+            repositorio.deshacerPago(luz, gastoLuz.id)
+            assertTrue(repositorio.observarPagosPendientes().first().isEmpty())
+            assertEquals(2, repositorio.observarMovimientos().first().size)
+
+            repositorio.eliminarTodosLosDatos()
+            assertTrue(repositorio.observarMovimientos().first().isEmpty())
+            assertTrue(repositorio.observarPagos().first().isEmpty())
+        } finally {
+            base.close()
+        }
+    }
+
+    @Test
+    fun loteRechazadoRevierteCambiosYLaFechaFuturaEsInvalida() = runBlocking {
+        val base = Room.inMemoryDatabaseBuilder(contexto, BaseDatosPayRoutine::class.java).build()
+        try {
+            val repositorio = RepositorioFinanzas(base)
+            repositorio.prepararCategoriasIniciales()
+            val categoria = repositorio.observarCategorias().first().first { it.tipo == TipoMovimiento.Gasto }
+            val hoy = LocalDate.now()
+            val valido = repositorio.registrarPagoUnico(NuevoPagoUnico("Internet", 12000, hoy, categoria.id)).toInt()
+            val sinCategoria = repositorio.insertar(
+                PagoPendiente(descripcion = "Anterior", monto = 2000.0, fechaVencimiento = Date(0), esCuota = false, pagado = false),
+            ).toInt()
+            assertThrows(IllegalArgumentException::class.java) {
+                runBlocking { repositorio.pagarVencimientos(listOf(valido, sinCategoria), hoy, "") }
+            }
+            assertThrows(IllegalArgumentException::class.java) {
+                runBlocking { repositorio.pagarVencimientos(listOf(valido), hoy.plusDays(1), "") }
+            }
+            assertTrue(repositorio.observarMovimientos().first().isEmpty())
+            assertEquals(2, repositorio.observarPagosPendientes().first().size)
+        } finally {
+            base.close()
+        }
+    }
 
     @Test
     fun registraCuatroDeDoceComoAntecedentesYLaQuintaQuedaPendienteSinAfectarElSaldo() = runBlocking {
@@ -154,7 +239,7 @@ class PagosRoomTest {
                 val pendiente = repositorio.observarPagosPendientes().first().single()
                 assertEquals("Pendiente anterior", pendiente.pago.descripcion)
                 assertNull(pendiente.nombreCategoria)
-                assertEquals(7, base.openHelper.readableDatabase.version)
+                assertEquals(8, base.openHelper.readableDatabase.version)
             } finally {
                 base.close()
             }
@@ -184,7 +269,7 @@ class PagosRoomTest {
             try {
                 val repositorio = RepositorioFinanzas(base)
                 val cuotas = repositorio.observarPagosConCategoria().first()
-                assertEquals(7, base.openHelper.readableDatabase.version)
+                assertEquals(8, base.openHelper.readableDatabase.version)
                 assertEquals(listOf(8, 8), cuotas.map { it.pago.obligacionId })
                 assertEquals(listOf(true, false), cuotas.map { it.pago.pagado })
                 assertEquals("Computación", cuotas.first().nombreObligacion)
@@ -212,12 +297,41 @@ class PagosRoomTest {
             val base = BaseDatosPayRoutine.crear(contexto, nombre)
             try {
                 val repositorio = RepositorioFinanzas(base)
-                assertEquals(7, base.openHelper.readableDatabase.version)
+                assertEquals(8, base.openHelper.readableDatabase.version)
                 assertEquals("recordatorio", repositorio.obtenerRecordatorio()?.programacionId)
                 assertTrue(repositorio.existePresupuesto(YearMonth.of(2026, 11)))
                 val pago = repositorio.observarPagos().first().single()
                 assertEquals("Pendiente anterior", pago.descripcion)
                 assertNull(pago.obligacionId)
+            } finally {
+                base.close()
+            }
+        } finally {
+            contexto.deleteDatabase(nombre)
+        }
+        Unit
+    }
+
+    @Test
+    fun migraDesdeVersionSieteSinCrearGastosParaCuotasHistoricas() = runBlocking {
+        val nombre = "pagos-v7-${UUID.randomUUID()}.db"
+        try {
+            prepararBaseAnterior(nombre, 7) {
+                execSQL("INSERT INTO Categoria VALUES (42, 'Servicios', 'Gasto', 1)")
+                execSQL("INSERT INTO ObligacionPago VALUES (8, 'Equipo', 42)")
+                execSQL("INSERT INTO PagoPendiente VALUES (7, 'Cuota 1 de 2', 12000, 0, 1, 1, 2, 1, 8)")
+                execSQL("INSERT INTO PagoPendiente VALUES (9, 'Cuota 2 de 2', 12000, 86400000, 1, 2, 2, 0, 8)")
+            }
+            val base = BaseDatosPayRoutine.crear(contexto, nombre)
+            try {
+                val repositorio = RepositorioFinanzas(base)
+                assertEquals(8, base.openHelper.readableDatabase.version)
+                val anterior = repositorio.observarPagos().first().first()
+                assertTrue(anterior.pagado)
+                assertNull(anterior.movimientoId)
+                assertTrue(repositorio.observarMovimientos().first().isEmpty())
+                repositorio.pagarVencimientos(listOf(9), LocalDate.now(), "")
+                assertEquals(9, repositorio.observarMovimientosConCategoria().first().single().pagoId)
             } finally {
                 base.close()
             }

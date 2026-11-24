@@ -32,7 +32,7 @@ import cl.payroutine.datos.local.entidad.Usuario
         PagoPendiente::class, Usuario::class, RecordatorioMovimiento::class,
         PresupuestoMensual::class, PreferenciasPresupuesto::class, ObligacionPago::class,
     ],
-    version = 7,
+    version = 8,
     autoMigrations = [
         AutoMigration(from = 1, to = 2),
         AutoMigration(from = 2, to = 3, spec = MigracionCategoriasPredefinidas::class),
@@ -57,7 +57,7 @@ abstract class BaseDatosPayRoutine : RoomDatabase() {
                 contexto.applicationContext,
                 BaseDatosPayRoutine::class.java,
                 nombre,
-            ).addMigrations(MIGRACION_5_6, MIGRACION_6_7).build()
+            ).addMigrations(MIGRACION_5_6, MIGRACION_6_7, MIGRACION_7_8).build()
     }
 }
 
@@ -112,5 +112,12 @@ private val MIGRACION_6_7 = object : Migration(6, 7) {
             db.execSQL("ALTER TABLE PagoPendiente ADD COLUMN obligacion_id INTEGER REFERENCES ObligacionPago(id)")
         }
         db.execSQL("CREATE INDEX IF NOT EXISTS index_PagoPendiente_obligacion_id ON PagoPendiente(obligacion_id)")
+    }
+}
+
+private val MIGRACION_7_8 = object : Migration(7, 8) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE PagoPendiente ADD COLUMN movimiento_id INTEGER REFERENCES Movimiento(id)")
+        db.execSQL("CREATE UNIQUE INDEX index_PagoPendiente_movimiento_id ON PagoPendiente(movimiento_id)")
     }
 }

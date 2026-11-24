@@ -127,6 +127,40 @@ class RepositorioFinanzas(private val baseDatos: BaseDatosPayRoutine) {
         return obligacionPagoDao.insertar(ObligacionPago(nombre = nombre, categoriaId = categoriaId)).toInt()
     }
 
+    internal suspend fun pagarVencimientos(ids: List<Int>, fecha: LocalDate, nota: String) = baseDatos.withTransaction {
+        require(ids.isNotEmpty()) { "Selecciona al menos un vencimiento." }
+        val fechaEfectiva = fechaMovimiento(fecha)
+        val vencimientos = ids.distinct().map { id ->
+            requireNotNull(pagoPendienteDao.buscarPorId(id)) { "Un vencimiento ya no está disponible." }
+        }
+        if (vencimientos.all { it.pagado && it.movimientoId != null }) return@withTransaction
+        require(vencimientos.none { it.pagado }) { "La selección cambió. Vuelve a elegir los vencimientos pendientes." }
+
+        for (pago in vencimientos) {
+            val categoriaId = pago.obligacionId?.let { obligacionPagoDao.obtenerCategoria(it) }
+            requireNotNull(categoriaId) { "«${pago.descripcion}» necesita una categoría de gasto." }
+            require(categoriaDao.buscarPorId(categoriaId)?.tipo == TipoMovimiento.Gasto) {
+                "La categoría de «${pago.descripcion}» ya no está disponible."
+            }
+            require(pago.monto.isFinite() && pago.monto > 0) { "El monto de «${pago.descripcion}» debe ser positivo." }
+            val movimientoId = movimientoDao.insertar(
+                Movimiento(
+                    nombre = pago.descripcion, tipo = TipoMovimiento.Gasto, monto = pago.monto,
+                    fecha = fechaEfectiva, categoriaId = categoriaId, nota = nota.trim().takeIf { it.isNotEmpty() },
+                ),
+            )
+            require(pagoPendienteDao.marcarPagado(pago.id, Math.toIntExact(movimientoId)) == 1) {
+                "La selección cambió. Vuelve a elegir los vencimientos pendientes."
+            }
+        }
+    }
+
+    internal suspend fun deshacerPago(id: Int, movimientoId: Int) = baseDatos.withTransaction {
+        if (pagoPendienteDao.deshacerPago(id, movimientoId) == 1) {
+            check(movimientoDao.eliminarPorId(movimientoId) == 1)
+        }
+    }
+
     internal fun observarPresupuestosMensuales() = mensualDao.observar()
     internal fun observarPreferenciasPresupuesto(usuarioId: String) = mensualDao.observarPreferencias(usuarioId)
     internal suspend fun preferenciasPresupuesto() = mensualDao.preferenciasActuales()
@@ -227,11 +261,11 @@ class RepositorioFinanzas(private val baseDatos: BaseDatosPayRoutine) {
     }
 
     suspend fun eliminarTodosLosDatos() = baseDatos.withTransaction {
+        pagoPendienteDao.eliminarTodos()
+        obligacionPagoDao.eliminarTodas()
         movimientoDao.eliminarTodos()
         presupuestoDao.eliminarTodos()
         mensualDao.eliminarTodos()
-        pagoPendienteDao.eliminarTodos()
-        obligacionPagoDao.eliminarTodas()
         categoriaDao.eliminarPersonalizadas()
         cargarCategoriasPredefinidas()
         usuarioDao.eliminarTodos()
@@ -248,7 +282,15 @@ class RepositorioFinanzas(private val baseDatos: BaseDatosPayRoutine) {
     suspend fun editarMovimiento(id: Int, datos: NuevoMovimiento): Boolean = baseDatos.withTransaction {
         val anterior = movimientoDao.buscarPorId(id) ?: return@withTransaction false
         require(datos.tipo == anterior.tipo) { "No se puede cambiar el tipo de movimiento" }
-        movimientoDao.actualizar(prepararMovimiento(datos, anterior)) == 1
+        val movimiento = if (pagoPendienteDao.buscarIdPorMovimiento(id) == null) {
+            prepararMovimiento(datos, anterior)
+        } else {
+            anterior.copy(
+                fecha = fechaMovimiento(datos.fecha, anterior.fecha),
+                nota = datos.nota.trim().takeIf { it.isNotEmpty() },
+            )
+        }
+        movimientoDao.actualizar(movimiento) == 1
     }
 
     suspend fun eliminarMovimiento(id: Int): Int = movimientoDao.eliminarPorId(id)
@@ -256,21 +298,24 @@ class RepositorioFinanzas(private val baseDatos: BaseDatosPayRoutine) {
     private suspend fun prepararMovimiento(datos: NuevoMovimiento, anterior: Movimiento? = null): Movimiento {
         require(datos.nombre.isNotBlank()) { "El nombre del movimiento es obligatorio" }
         require(datos.monto in 1..MONTO_MAXIMO_EXACTO) { "El monto debe ser un número positivo de pesos enteros" }
-        val zona = ZoneId.systemDefault()
-        require(datos.fecha <= LocalDate.now(zona)) { "La fecha no puede ser futura" }
         val categoria = categoriaDao.buscarPorId(datos.categoriaId)
         require(categoria != null && categoria.tipo == datos.tipo) { "La categoría no corresponde al tipo de movimiento" }
-        val fecha = anterior?.fecha?.takeIf { it.toInstant().atZone(zona).toLocalDate() == datos.fecha }
-            ?: Date.from(datos.fecha.atStartOfDay(zona).toInstant())
         return Movimiento(
             id = anterior?.id ?: 0,
             nombre = datos.nombre.trim(),
             tipo = datos.tipo,
             monto = datos.monto.toDouble(),
-            fecha = fecha,
+            fecha = fechaMovimiento(datos.fecha, anterior?.fecha),
             categoriaId = datos.categoriaId,
             nota = datos.nota.trim().takeIf { it.isNotEmpty() },
         )
+    }
+
+    private fun fechaMovimiento(fecha: LocalDate, anterior: Date? = null): Date {
+        val zona = ZoneId.systemDefault()
+        require(fecha <= LocalDate.now(zona)) { "La fecha no puede ser futura" }
+        return anterior?.takeIf { it.toInstant().atZone(zona).toLocalDate() == fecha }
+            ?: Date.from(fecha.atStartOfDay(zona).toInstant())
     }
 
     suspend fun insertar(categoria: Categoria) = categoriaDao.insertar(categoria)

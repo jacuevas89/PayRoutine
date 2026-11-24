@@ -266,13 +266,23 @@ internal fun CampoVencimientoPago(etiqueta: String, descripcion: String, fecha: 
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-internal fun SelectorVencimientoPago(fecha: LocalDate?, cerrar: () -> Unit, elegir: (LocalDate) -> Unit) {
+internal fun SelectorVencimientoPago(
+    fecha: LocalDate?,
+    fechaMaxima: LocalDate? = null,
+    cerrar: () -> Unit,
+    elegir: (LocalDate) -> Unit,
+) {
     val seleccionUtc = fecha?.atStartOfDay(ZoneOffset.UTC)?.toInstant()?.toEpochMilli()
     val hoyUtc = LocalDate.now().atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli()
     val calendario = rememberDatePickerState(
         initialSelectedDateMillis = seleccionUtc,
         initialDisplayedMonthMillis = seleccionUtc ?: hoyUtc,
         yearRange = aniosCronograma,
+        selectableDates = object : SelectableDates {
+            override fun isSelectableDate(utcTimeMillis: Long): Boolean =
+                fechaMaxima == null || Instant.ofEpochMilli(utcTimeMillis).atZone(ZoneOffset.UTC).toLocalDate() <= fechaMaxima
+            override fun isSelectableYear(year: Int): Boolean = fechaMaxima == null || year <= fechaMaxima.year
+        },
     )
     DatePickerDialog(
         onDismissRequest = cerrar,

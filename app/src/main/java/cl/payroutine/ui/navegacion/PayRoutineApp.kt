@@ -52,6 +52,7 @@ import cl.payroutine.viewmodel.EstadoPagos
 import cl.payroutine.viewmodel.EstadoPerfil
 import cl.payroutine.viewmodel.FechaLocal
 import cl.payroutine.viewmodel.FinanzasViewModel
+import cl.payroutine.viewmodel.OperacionPagoViewModel
 import cl.payroutine.viewmodel.PerfilViewModel
 import cl.payroutine.viewmodel.RegistroMovimientoViewModel
 import cl.payroutine.viewmodel.RegistroPagoViewModel
@@ -358,6 +359,8 @@ private fun NavegacionPrincipal(
                     }
                 }
                 composable(Seccion.Pagos.ruta) { origen ->
+                    val operacion = viewModelDelDestino<OperacionPagoViewModel>(origen)
+                    val estadoOperacion by operacion.estado.collectAsState()
                     PantallaPagos(
                         estado = pagosActuales,
                         fecha = fechaPagos,
@@ -365,6 +368,9 @@ private fun NavegacionPrincipal(
                         verCalendario = { abrir(origen, CALENDARIO) },
                         verHistorial = { abrir(origen, HISTORIAL_PAGOS) },
                         verPago = { abrir(origen, "$DETALLE_PAGO/$it") },
+                        operacion = estadoOperacion,
+                        pagar = operacion::pagar,
+                        limpiarOperacion = operacion::limpiar,
                     )
                 }
                 composable(Seccion.Resumen.ruta) { PantallaResumen(datosActuales) }
@@ -384,8 +390,8 @@ private fun NavegacionPrincipal(
                 ) { origen ->
                     val id = requireNotNull(origen.arguments).getInt("id")
                     val datos = datosActuales
-                    val movimiento = datos?.movimientos?.find { it.movimiento.id == id }?.movimiento
-                    if (movimiento == null) {
+                    val fila = datos?.movimientos?.find { it.movimiento.id == id }
+                    if (fila == null) {
                         Column(Modifier.fillMaxSize()) {
                             Cabecera("Editar movimiento", volver = { volver(origen) })
                             Cuerpo(Modifier.weight(1f)) {
@@ -403,7 +409,8 @@ private fun NavegacionPrincipal(
                             reintentarCategorias = reintentarCategorias,
                             estadoRegistro = estadoRegistro,
                             guardar = { registro.editar(id, it) },
-                            movimientoInicial = movimiento,
+                            movimientoInicial = fila.movimiento,
+                            soloFechaYNota = fila.pagoId != null,
                         ) { volver(origen) }
                     }
                 }
@@ -531,7 +538,12 @@ private fun NavegacionPrincipal(
                     arguments = listOf(navArgument("id") { type = NavType.IntType }),
                 ) { origen ->
                     val id = requireNotNull(origen.arguments).getInt("id")
-                    PantallaDetallePago(pagosActuales, id, fechaPagos, reintentarPagos) { volver(origen) }
+                    val operacion = viewModelDelDestino<OperacionPagoViewModel>(origen)
+                    val estadoOperacion by operacion.estado.collectAsState()
+                    PantallaDetallePago(
+                        pagosActuales, id, fechaPagos, reintentarPagos,
+                        estadoOperacion, operacion::pagar, operacion::deshacer, operacion::limpiar,
+                    ) { volver(origen) }
                 }
                 composable(
                     "$DETALLE_MOVIMIENTO/{id}",
@@ -550,7 +562,7 @@ private fun NavegacionPrincipal(
                         zona = datos?.fecha?.zona,
                         estadoEliminacion = estadoEliminacion,
                         editar = { abrir(entrada, "$EDITAR_MOVIMIENTO/$id") },
-                        eliminar = { eliminacion.eliminar(id) },
+                        eliminar = { eliminacion.eliminar(id, fila?.pagoId) },
                         limpiarError = eliminacion::limpiarError,
                     ) { volver(entrada) }
                 }
