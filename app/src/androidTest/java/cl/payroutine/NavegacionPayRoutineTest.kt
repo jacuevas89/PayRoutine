@@ -7,16 +7,19 @@ import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import cl.payroutine.datos.local.dao.MovimientoConCategoria
+import cl.payroutine.datos.local.dao.PagoConCategoria
 import cl.payroutine.datos.local.entidad.Movimiento
 import cl.payroutine.datos.local.entidad.PagoPendiente
 import cl.payroutine.datos.local.entidad.TipoMovimiento
 import cl.payroutine.datos.local.entidad.Usuario
 import cl.payroutine.ui.navegacion.NavegacionPayRoutine
+import cl.payroutine.ui.pantallas.fechaEnPantalla
 import cl.payroutine.ui.pantallas.montoEnPantalla
 import cl.payroutine.ui.theme.PayRoutineTheme
 import cl.payroutine.viewmodel.EstadoPerfil
 import cl.payroutine.viewmodel.EstadoEdicionPerfil
 import cl.payroutine.viewmodel.EstadoBorrado
+import cl.payroutine.viewmodel.EstadoPagos
 import cl.payroutine.viewmodel.FechaLocal
 import cl.payroutine.viewmodel.calcularInicio
 import java.time.LocalDate
@@ -246,14 +249,22 @@ class NavegacionPayRoutineTest {
         tocar("Próximo pago: Tarjeta de crédito")
         ver("Pagos pendientes")
         tocar("Calendario")
-        ver("Vence el 2 de noviembre")
+        ver("Noviembre 2026")
+        val vencimiento = fechaEnPantalla(fecha.hoy.plusDays(4))
+        compose.onNodeWithContentDescription("$vencimiento, con vencimientos pendientes").performClick()
+        ver("Vencimientos pendientes")
+        tocar("Tarjeta de crédito")
+        ver("Detalle del pago")
+        volver()
+        ver("Vencimientos pendientes")
         atrasAndroid()
         tocar("Pagados")
         ver("Historial de pagos")
         tocar("Pendientes")
         ver("Pagos pendientes")
-        tocar("Cuota notebook (4 de 12)")
-        ver("Calendario de cuotas")
+        tocar("Tarjeta de crédito")
+        ver("Detalle del pago")
+        ver("Servicios")
         volver()
         compose.onNodeWithContentDescription("Nuevo pago pendiente").performClick()
         ver("Guardar pago pendiente")
@@ -270,7 +281,13 @@ class NavegacionPayRoutineTest {
     private fun iniciarConPerfil() {
         compose.setContent {
             PayRoutineTheme {
-                NavegacionPayRoutine(EstadoPerfil(cargando = false, usuario = usuario), inicio, {}) { _, _ -> }
+                NavegacionPayRoutine(
+                    EstadoPerfil(cargando = false, usuario = usuario), inicio, {},
+                    estadoPagos = EstadoPagos(
+                        cargando = false,
+                        pagos = inicio.pagosPendientes.map { PagoConCategoria(it.pago, "Servicios") },
+                    ),
+                ) { _, _ -> }
             }
         }
     }
@@ -313,14 +330,18 @@ class NavegacionPayRoutineTest {
         ver("No hay gastos registrados en este período.")
 
         compose.onNodeWithContentDescription("Elegir mes y año").performClick()
-        compose.onNodeWithContentDescription("Año anterior").performClick()
-        tocar("Noviembre")
+        compose.onNodeWithContentDescription("Elegir año").performClick()
+        tocar("2025")
+        compose.onNodeWithContentDescription("Elegir mes").performClick()
+        compose.onNodeWithText("Noviembre").performScrollTo().performClick()
+        tocar("Aplicar")
         ver("Noviembre 2025")
         ver("No hay movimientos registrados en este período.")
 
         compose.onNodeWithContentDescription("Elegir mes y año").performClick()
-        compose.onNodeWithContentDescription("Año siguiente").performClick()
-        tocar("Noviembre")
+        compose.onNodeWithContentDescription("Elegir año").performClick()
+        tocar("2026")
+        tocar("Aplicar")
         ver("Noviembre 2026")
         ver("Alimentación")
         compose.runOnIdle {
