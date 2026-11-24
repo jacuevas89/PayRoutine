@@ -2,16 +2,10 @@ package cl.payroutine.ui.pantallas
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -27,7 +21,6 @@ import cl.payroutine.ui.theme.*
 import cl.payroutine.viewmodel.DatosInicio
 import cl.payroutine.viewmodel.GastoPorCategoria
 import cl.payroutine.viewmodel.calcularResumenMensual
-import java.time.Month
 import java.time.YearMonth
 
 @Composable
@@ -114,37 +107,6 @@ private fun DistribucionGastos(gastos: List<GastoPorCategoria>) {
             }
         }
     }
-}
-
-@OptIn(ExperimentalLayoutApi::class)
-@Composable
-internal fun SelectorPeriodo(periodo: YearMonth, cerrar: () -> Unit, elegir: (YearMonth) -> Unit) {
-    var anio by rememberSaveable { mutableIntStateOf(periodo.year) }
-    AlertDialog(
-        onDismissRequest = cerrar,
-        title = { Text("Elegir mes y año") },
-        text = {
-            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                    BotonIcono("back", "Año anterior", { anio-- })
-                    Cifra(anio.toString(), tamano = 17)
-                    BotonIcono("next", "Año siguiente", { anio++ })
-                }
-                FlowRow(
-                    modifier = Modifier.selectableGroup(),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                    verticalArrangement = Arrangement.spacedBy(6.dp),
-                ) {
-                    Month.values().forEach { mes ->
-                        Pildora(nombreMesEnPantalla(mes), activa = anio == periodo.year && mes == periodo.month) {
-                            elegir(YearMonth.of(anio, mes))
-                        }
-                    }
-                }
-            }
-        },
-        confirmButton = { TextButton(onClick = cerrar) { Text("Cancelar") } },
-    )
 }
 
 @Composable

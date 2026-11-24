@@ -46,8 +46,13 @@ class PresupuestoFlujoTest {
             val actual = YearMonth.now()
             val siguiente = actual.plusMonths(1)
             tocarEnCuerpo(mesEnPantalla(actual.atDay(1)))
-            if (siguiente.year != actual.year) compose.onNodeWithContentDescription("Año siguiente").performClick()
-            compose.onNodeWithText(nombreMesEnPantalla(siguiente.month)).performClick()
+            if (siguiente.year != actual.year) {
+                compose.onNodeWithContentDescription("Elegir año").performClick()
+                compose.onNodeWithText(siguiente.year.toString()).performClick()
+            }
+            compose.onNodeWithContentDescription("Elegir mes").performClick()
+            compose.onNodeWithText(nombreMesEnPantalla(siguiente.month)).performScrollTo().performClick()
+            compose.onNodeWithText("Aplicar").performClick()
             esperar("Sin presupuesto")
             tocarEnCuerpo("Copiar mes anterior")
             esperar("Revisa los límites del mes anterior antes de guardar.")

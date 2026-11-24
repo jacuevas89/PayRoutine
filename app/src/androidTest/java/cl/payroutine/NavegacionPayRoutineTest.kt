@@ -330,14 +330,18 @@ class NavegacionPayRoutineTest {
         ver("No hay gastos registrados en este período.")
 
         compose.onNodeWithContentDescription("Elegir mes y año").performClick()
-        compose.onNodeWithContentDescription("Año anterior").performClick()
-        tocar("Noviembre")
+        compose.onNodeWithContentDescription("Elegir año").performClick()
+        tocar("2025")
+        compose.onNodeWithContentDescription("Elegir mes").performClick()
+        compose.onNodeWithText("Noviembre").performScrollTo().performClick()
+        tocar("Aplicar")
         ver("Noviembre 2025")
         ver("No hay movimientos registrados en este período.")
 
         compose.onNodeWithContentDescription("Elegir mes y año").performClick()
-        compose.onNodeWithContentDescription("Año siguiente").performClick()
-        tocar("Noviembre")
+        compose.onNodeWithContentDescription("Elegir año").performClick()
+        tocar("2026")
+        tocar("Aplicar")
         ver("Noviembre 2026")
         ver("Alimentación")
         compose.runOnIdle {

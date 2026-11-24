@@ -86,12 +86,21 @@ class HistorialCalendarioPagosTest {
         compose.onNodeWithText("Cuota histórica").assertDoesNotExist()
 
         compose.onNodeWithContentDescription("Elegir mes y año").performClick()
-        compose.onNodeWithContentDescription("Año anterior").performClick()
-        compose.onNodeWithText("Diciembre").performClick()
+        compose.onNodeWithContentDescription("Elegir año").performClick()
+        compose.onNodeWithText("2026").performClick()
+        compose.onNodeWithContentDescription("Elegir mes").performClick()
+        compose.onNodeWithText("Diciembre").performScrollTo().performClick()
+        compose.onNodeWithText("Aplicar").performClick()
         compose.onNodeWithText("Diciembre 2026").assertIsDisplayed()
         compose.onNodeWithText("1 pago realizado").assertIsDisplayed()
         compose.onAllNodesWithText(montoEnPantalla(12000)).assertCountEquals(2)
         compose.onNodeWithText("Pago atrasado").assertDoesNotExist()
+
+        compose.onNodeWithContentDescription("Elegir mes y año").performClick()
+        compose.onNodeWithContentDescription("Elegir mes").performClick()
+        compose.onNodeWithText("Octubre").performScrollTo().performClick()
+        compose.onNodeWithText("Cancelar").performClick()
+        compose.onNodeWithText("Diciembre 2026").assertIsDisplayed()
         compose.onNodeWithText("Pago anticipado").performClick()
         assertEquals(104, gastoAbierto)
     }
