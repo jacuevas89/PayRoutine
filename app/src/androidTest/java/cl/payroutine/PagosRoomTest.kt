@@ -21,6 +21,7 @@ import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.runBlocking
 import java.math.BigDecimal
 import java.time.LocalDate
+import java.time.YearMonth
 import java.time.ZoneId
 import java.util.UUID
 import org.json.JSONObject
@@ -136,28 +137,11 @@ class PagosRoomTest {
     fun migraDesdeVersionCuatroSinPerderPagosAnteriores() = runBlocking {
         val nombre = "rf81-${UUID.randomUUID()}.db"
         try {
-            val esquema = instrumentacion.context.assets.open("${BaseDatosPayRoutine::class.java.name}/4.json")
-                .bufferedReader().use { JSONObject(it.readText()).getJSONObject("database") }
-            val archivo = contexto.getDatabasePath(nombre)
-            archivo.parentFile?.mkdirs()
-            SQLiteDatabase.openOrCreateDatabase(archivo, null).use { sqlite ->
-                val entidades = esquema.getJSONArray("entities")
-                for (i in 0 until entidades.length()) {
-                    val entidad = entidades.getJSONObject(i)
-                    val tabla = entidad.getString("tableName")
-                    sqlite.execSQL(entidad.getString("createSql").replace("\${TABLE_NAME}", tabla))
-                    val indices = entidad.optJSONArray("indices") ?: continue
-                    for (j in 0 until indices.length()) {
-                        sqlite.execSQL(indices.getJSONObject(j).getString("createSql").replace("\${TABLE_NAME}", tabla))
-                    }
-                }
-                val consultas = esquema.getJSONArray("setupQueries")
-                for (i in 0 until consultas.length()) sqlite.execSQL(consultas.getString(i))
-                sqlite.execSQL("INSERT INTO PagoPendiente VALUES (7, 'Pendiente anterior', 20000.25, 0, 1, 2, 6, 0)")
-                sqlite.execSQL("INSERT INTO PagoPendiente VALUES (9, 'Pagado anterior', 10000, 0, 0, NULL, NULL, 1)")
-                sqlite.version = 4
+            prepararBaseAnterior(nombre, 4) {
+                execSQL("INSERT INTO PagoPendiente VALUES (7, 'Pendiente anterior', 20000.25, 0, 1, 2, 6, 0)")
+                execSQL("INSERT INTO PagoPendiente VALUES (9, 'Pagado anterior', 10000, 0, 0, NULL, NULL, 1)")
             }
-            val base = Room.databaseBuilder(contexto, BaseDatosPayRoutine::class.java, nombre).build()
+            val base = BaseDatosPayRoutine.crear(contexto, nombre)
             try {
                 val repositorio = RepositorioFinanzas(base)
                 val pagos = repositorio.observarPagos().first()
@@ -170,7 +154,7 @@ class PagosRoomTest {
                 val pendiente = repositorio.observarPagosPendientes().first().single()
                 assertEquals("Pendiente anterior", pendiente.pago.descripcion)
                 assertNull(pendiente.nombreCategoria)
-                assertEquals(5, base.openHelper.readableDatabase.version)
+                assertEquals(7, base.openHelper.readableDatabase.version)
             } finally {
                 base.close()
             }
@@ -178,5 +162,91 @@ class PagosRoomTest {
             contexto.deleteDatabase(nombre)
         }
         Unit
+    }
+
+    @Test
+    fun migraLaVersionCincoLocalYConservaLasCuotasVinculadas() = runBlocking {
+        val nombre = "pagos-v5-${UUID.randomUUID()}.db"
+        try {
+            prepararBaseAnterior(nombre, 4) {
+                execSQL("CREATE TABLE ObligacionPago (id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, nombre TEXT NOT NULL, categoria_id INTEGER NOT NULL REFERENCES Categoria(id))")
+                execSQL("CREATE INDEX index_ObligacionPago_categoria_id ON ObligacionPago(categoria_id)")
+                execSQL("ALTER TABLE PagoPendiente ADD COLUMN obligacion_id INTEGER REFERENCES ObligacionPago(id)")
+                execSQL("CREATE INDEX index_PagoPendiente_obligacion_id ON PagoPendiente(obligacion_id)")
+                execSQL("UPDATE room_master_table SET identity_hash = 'a6b2aa185822f70d9d966a667ff31702' WHERE id = 42")
+                execSQL("INSERT INTO Categoria VALUES (42, 'Servicios', 'Gasto', 1)")
+                execSQL("INSERT INTO ObligacionPago VALUES (8, 'Computación', 42)")
+                execSQL("INSERT INTO PagoPendiente VALUES (7, 'Cuota 1 de 2', 12000, 0, 1, 1, 2, 1, 8)")
+                execSQL("INSERT INTO PagoPendiente VALUES (9, 'Cuota 2 de 2', 12000, 86400000, 1, 2, 2, 0, 8)")
+                version = 5
+            }
+            val base = BaseDatosPayRoutine.crear(contexto, nombre)
+            try {
+                val repositorio = RepositorioFinanzas(base)
+                val cuotas = repositorio.observarPagosConCategoria().first()
+                assertEquals(7, base.openHelper.readableDatabase.version)
+                assertEquals(listOf(8, 8), cuotas.map { it.pago.obligacionId })
+                assertEquals(listOf(true, false), cuotas.map { it.pago.pagado })
+                assertEquals("Computación", cuotas.first().nombreObligacion)
+                assertEquals("Servicios", cuotas.first().nombreCategoria)
+                assertNull(repositorio.obtenerRecordatorio())
+            } finally {
+                base.close()
+            }
+        } finally {
+            contexto.deleteDatabase(nombre)
+        }
+        Unit
+    }
+
+    @Test
+    fun migraLaVersionSeisYConservaPresupuestosRecordatoriosYPagos() = runBlocking {
+        val nombre = "pagos-v6-${UUID.randomUUID()}.db"
+        try {
+            prepararBaseAnterior(nombre, 6) {
+                execSQL("INSERT INTO Usuario VALUES ('perfil-anterior', 'María Pérez', 'Mari')")
+                execSQL("INSERT INTO RecordatorioMovimiento VALUES ('perfil-anterior', 1, 1200, NULL, 0, 'Diaria', 'recordatorio', NULL)")
+                execSQL("INSERT INTO PresupuestoMensual (anio, mes, modalidad, limiteGeneral, generado) VALUES (2026, 11, 'General', 80000, 0)")
+                execSQL("INSERT INTO PagoPendiente VALUES (7, 'Pendiente anterior', 24000, 0, 0, NULL, NULL, 0)")
+            }
+            val base = BaseDatosPayRoutine.crear(contexto, nombre)
+            try {
+                val repositorio = RepositorioFinanzas(base)
+                assertEquals(7, base.openHelper.readableDatabase.version)
+                assertEquals("recordatorio", repositorio.obtenerRecordatorio()?.programacionId)
+                assertTrue(repositorio.existePresupuesto(YearMonth.of(2026, 11)))
+                val pago = repositorio.observarPagos().first().single()
+                assertEquals("Pendiente anterior", pago.descripcion)
+                assertNull(pago.obligacionId)
+            } finally {
+                base.close()
+            }
+        } finally {
+            contexto.deleteDatabase(nombre)
+        }
+        Unit
+    }
+
+    private fun prepararBaseAnterior(nombre: String, versionEsquema: Int, insertar: SQLiteDatabase.() -> Unit) {
+        val esquema = instrumentacion.context.assets.open("${BaseDatosPayRoutine::class.java.name}/$versionEsquema.json")
+            .bufferedReader().use { JSONObject(it.readText()).getJSONObject("database") }
+        val archivo = contexto.getDatabasePath(nombre)
+        archivo.parentFile?.mkdirs()
+        SQLiteDatabase.openOrCreateDatabase(archivo, null).use { sqlite ->
+            val entidades = esquema.getJSONArray("entities")
+            for (i in 0 until entidades.length()) {
+                val entidad = entidades.getJSONObject(i)
+                val tabla = entidad.getString("tableName")
+                sqlite.execSQL(entidad.getString("createSql").replace("\${TABLE_NAME}", tabla))
+                val indices = entidad.optJSONArray("indices") ?: continue
+                for (j in 0 until indices.length()) {
+                    sqlite.execSQL(indices.getJSONObject(j).getString("createSql").replace("\${TABLE_NAME}", tabla))
+                }
+            }
+            val consultas = esquema.getJSONArray("setupQueries")
+            for (i in 0 until consultas.length()) sqlite.execSQL(consultas.getString(i))
+            sqlite.version = versionEsquema
+            sqlite.insertar()
+        }
     }
 }

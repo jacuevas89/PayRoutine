@@ -77,7 +77,7 @@ class RegistroMovimientosRoomTest {
     @Test
     fun registraAmbosTiposActualizaInicioYContadoresYPersisteAlReabrir() = runBlocking {
         val nombreBase = "rf23-${UUID.randomUUID()}.db"
-        var base = Room.databaseBuilder(contexto, BaseDatosPayRoutine::class.java, nombreBase).build()
+        var base = BaseDatosPayRoutine.crear(contexto, nombreBase)
         try {
             val repositorio = RepositorioFinanzas(base)
             repositorio.prepararCategoriasIniciales()
@@ -103,7 +103,7 @@ class RegistroMovimientosRoomTest {
             assertEquals(1, usos.single { it.categoria.id == hogar.id }.cantidadMovimientos)
 
             base.close()
-            base = Room.databaseBuilder(contexto, BaseDatosPayRoutine::class.java, nombreBase).build()
+            base = BaseDatosPayRoutine.crear(contexto, nombreBase)
             assertEquals(filas, RepositorioFinanzas(base).observarMovimientos().first())
         } finally {
             base.close()
@@ -162,7 +162,7 @@ class RegistroMovimientosRoomTest {
                 sqlite.execSQL("INSERT INTO Usuario VALUES ('perfil-anterior', 'María Pérez', 'Mari')")
                 sqlite.version = 3
             }
-            val base = Room.databaseBuilder(contexto, BaseDatosPayRoutine::class.java, nombreBase).build()
+            val base = BaseDatosPayRoutine.crear(contexto, nombreBase)
             try {
                 val repositorio = RepositorioFinanzas(base)
                 val anterior = repositorio.observarMovimientos().first().single()
@@ -175,7 +175,8 @@ class RegistroMovimientosRoomTest {
                 assertEquals(31, repositorio.observarPresupuestos().first().single().id)
                 assertEquals(7, repositorio.observarPagos().first().single().id)
                 assertEquals("perfil-anterior", repositorio.observarUsuario().first()?.id)
-                assertEquals(5, base.openHelper.readableDatabase.version)
+                assertEquals(7, base.openHelper.readableDatabase.version)
+                assertNull(repositorio.obtenerRecordatorio())
             } finally {
                 base.close()
             }

@@ -2,7 +2,6 @@ package cl.payroutine.viewmodel
 
 import cl.payroutine.datos.local.dao.MovimientoConCategoria
 import cl.payroutine.datos.local.entidad.PagoPendiente
-import cl.payroutine.datos.local.entidad.TipoMovimiento
 import java.math.BigDecimal
 import java.time.LocalDate
 import java.time.YearMonth
@@ -35,17 +34,7 @@ internal fun calcularInicio(
     pagos: List<PagoPendiente>,
 ): DatosInicio {
     val mes = YearMonth.from(fecha.hoy)
-    var ingresos = BigDecimal.ZERO
-    var gastos = BigDecimal.ZERO
-    for ((movimiento) in movimientos) {
-        val dia = movimiento.fecha.toInstant().atZone(fecha.zona).toLocalDate()
-        if (YearMonth.from(dia) != mes) continue
-        val monto = BigDecimal.valueOf(movimiento.monto)
-        when (movimiento.tipo) {
-            TipoMovimiento.Ingreso -> ingresos += monto
-            TipoMovimiento.Gasto -> gastos += monto
-        }
-    }
+    val importes = calcularImportes(movimientosDelMes(movimientos, mes, fecha.zona))
 
     val pendientes = pagos.asSequence()
         .filterNot { it.pagado }
@@ -57,5 +46,5 @@ internal fun calcularInicio(
         .take(3)
         .toList()
 
-    return DatosInicio(fecha, ingresos, gastos, pendientes, movimientos)
+    return DatosInicio(fecha, importes.ingresos, importes.gastos, pendientes, movimientos)
 }

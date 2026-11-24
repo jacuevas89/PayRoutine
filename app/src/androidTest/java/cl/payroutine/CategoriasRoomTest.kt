@@ -52,7 +52,7 @@ class CategoriasRoomTest {
     @Test
     fun catalogoPersisteSinDuplicadosConInicializacionesSimultaneas() = runBlocking {
         val nombreBase = "rf41-${UUID.randomUUID()}.db"
-        var base = Room.databaseBuilder(contexto, BaseDatosPayRoutine::class.java, nombreBase).build()
+        var base = BaseDatosPayRoutine.crear(contexto, nombreBase)
         try {
             val repositorio = RepositorioFinanzas(base)
             assertTrue(repositorio.observarCategorias().first().isEmpty())
@@ -71,11 +71,11 @@ class CategoriasRoomTest {
             assertTrue(repositorio.observarCategoriasConUso().first().all { it.cantidadMovimientos == 0 })
 
             base.close()
-            base = Room.databaseBuilder(contexto, BaseDatosPayRoutine::class.java, nombreBase).build()
+            base = BaseDatosPayRoutine.crear(contexto, nombreBase)
             val reabierto = RepositorioFinanzas(base)
             reabierto.prepararCategoriasIniciales()
             assertEquals(categorias, reabierto.observarCategorias().first())
-            assertEquals(5, base.openHelper.readableDatabase.version)
+            assertEquals(7, base.openHelper.readableDatabase.version)
         } finally {
             base.close()
             contexto.deleteDatabase(nombreBase)

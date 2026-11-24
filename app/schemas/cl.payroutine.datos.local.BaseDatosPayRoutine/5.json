@@ -2,7 +2,7 @@
   "formatVersion": 1,
   "database": {
     "version": 5,
-    "identityHash": "a6b2aa185822f70d9d966a667ff31702",
+    "identityHash": "5b1a241c3812d1fc6cbbfe7a2451e961",
     "entities": [
       {
         "tableName": "Categoria",
@@ -187,7 +187,7 @@
       },
       {
         "tableName": "PagoPendiente",
-        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `descripcion` TEXT NOT NULL, `monto` REAL NOT NULL, `fecha_vencimiento` INTEGER NOT NULL, `es_cuota` INTEGER NOT NULL, `cuota_actual` INTEGER, `total_cuotas` INTEGER, `pagado` INTEGER NOT NULL, `obligacion_id` INTEGER, FOREIGN KEY(`obligacion_id`) REFERENCES `ObligacionPago`(`id`) ON UPDATE NO ACTION ON DELETE NO ACTION )",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `descripcion` TEXT NOT NULL, `monto` REAL NOT NULL, `fecha_vencimiento` INTEGER NOT NULL, `es_cuota` INTEGER NOT NULL, `cuota_actual` INTEGER, `total_cuotas` INTEGER, `pagado` INTEGER NOT NULL)",
         "fields": [
           {
             "fieldPath": "id",
@@ -234,11 +234,6 @@
             "columnName": "pagado",
             "affinity": "INTEGER",
             "notNull": true
-          },
-          {
-            "fieldPath": "obligacionId",
-            "columnName": "obligacion_id",
-            "affinity": "INTEGER"
           }
         ],
         "primaryKey": {
@@ -246,31 +241,7 @@
           "columnNames": [
             "id"
           ]
-        },
-        "indices": [
-          {
-            "name": "index_PagoPendiente_obligacion_id",
-            "unique": false,
-            "columnNames": [
-              "obligacion_id"
-            ],
-            "orders": [],
-            "createSql": "CREATE INDEX IF NOT EXISTS `index_PagoPendiente_obligacion_id` ON `${TABLE_NAME}` (`obligacion_id`)"
-          }
-        ],
-        "foreignKeys": [
-          {
-            "table": "ObligacionPago",
-            "onDelete": "NO ACTION",
-            "onUpdate": "NO ACTION",
-            "columns": [
-              "obligacion_id"
-            ],
-            "referencedColumns": [
-              "id"
-            ]
-          }
-        ]
+        }
       },
       {
         "tableName": "Usuario",
@@ -303,52 +274,69 @@
         }
       },
       {
-        "tableName": "ObligacionPago",
-        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `nombre` TEXT NOT NULL, `categoria_id` INTEGER NOT NULL, FOREIGN KEY(`categoria_id`) REFERENCES `Categoria`(`id`) ON UPDATE NO ACTION ON DELETE NO ACTION )",
+        "tableName": "RecordatorioMovimiento",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`usuario_id` TEXT NOT NULL, `activo` INTEGER NOT NULL, `minutoDelDia` INTEGER NOT NULL, `fechaInicial` INTEGER, `fechaReferencia` INTEGER NOT NULL, `recurrencia` TEXT NOT NULL, `programacionId` TEXT NOT NULL, `ultimoAviso` INTEGER, PRIMARY KEY(`usuario_id`), FOREIGN KEY(`usuario_id`) REFERENCES `Usuario`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )",
         "fields": [
           {
-            "fieldPath": "id",
-            "columnName": "id",
-            "affinity": "INTEGER",
-            "notNull": true
-          },
-          {
-            "fieldPath": "nombre",
-            "columnName": "nombre",
+            "fieldPath": "usuarioId",
+            "columnName": "usuario_id",
             "affinity": "TEXT",
             "notNull": true
           },
           {
-            "fieldPath": "categoriaId",
-            "columnName": "categoria_id",
+            "fieldPath": "activo",
+            "columnName": "activo",
             "affinity": "INTEGER",
             "notNull": true
+          },
+          {
+            "fieldPath": "minutoDelDia",
+            "columnName": "minutoDelDia",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "fechaInicial",
+            "columnName": "fechaInicial",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "fechaReferencia",
+            "columnName": "fechaReferencia",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "recurrencia",
+            "columnName": "recurrencia",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "programacionId",
+            "columnName": "programacionId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "ultimoAviso",
+            "columnName": "ultimoAviso",
+            "affinity": "INTEGER"
           }
         ],
         "primaryKey": {
-          "autoGenerate": true,
+          "autoGenerate": false,
           "columnNames": [
-            "id"
+            "usuario_id"
           ]
         },
-        "indices": [
-          {
-            "name": "index_ObligacionPago_categoria_id",
-            "unique": false,
-            "columnNames": [
-              "categoria_id"
-            ],
-            "orders": [],
-            "createSql": "CREATE INDEX IF NOT EXISTS `index_ObligacionPago_categoria_id` ON `${TABLE_NAME}` (`categoria_id`)"
-          }
-        ],
         "foreignKeys": [
           {
-            "table": "Categoria",
-            "onDelete": "NO ACTION",
+            "table": "Usuario",
+            "onDelete": "CASCADE",
             "onUpdate": "NO ACTION",
             "columns": [
-              "categoria_id"
+              "usuario_id"
             ],
             "referencedColumns": [
               "id"
@@ -359,7 +347,7 @@
     ],
     "setupQueries": [
       "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
-      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, 'a6b2aa185822f70d9d966a667ff31702')"
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '5b1a241c3812d1fc6cbbfe7a2451e961')"
     ]
   }
 }

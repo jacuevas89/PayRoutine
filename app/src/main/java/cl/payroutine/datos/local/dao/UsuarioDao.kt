@@ -16,6 +16,9 @@ interface UsuarioDao {
     @Query("SELECT * FROM Usuario LIMIT 1")
     fun observar(): Flow<Usuario?>
 
+    @Query("SELECT id FROM Usuario LIMIT 1")
+    suspend fun idActual(): String?
+
     @Query("SELECT EXISTS(SELECT 1 FROM Usuario)")
     suspend fun existe(): Boolean
 

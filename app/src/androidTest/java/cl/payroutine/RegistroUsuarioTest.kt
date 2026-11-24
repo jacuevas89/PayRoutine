@@ -1,7 +1,6 @@
 package cl.payroutine
 
 import android.database.sqlite.SQLiteDatabase
-import androidx.room.Room
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import cl.payroutine.datos.local.BaseDatosPayRoutine
@@ -93,7 +92,7 @@ class RegistroUsuarioTest {
     }
 
     private inline fun <T> conBase(nombre: String, usar: (BaseDatosPayRoutine) -> T): T {
-        val base = Room.databaseBuilder(contexto, BaseDatosPayRoutine::class.java, nombre).build()
+        val base = BaseDatosPayRoutine.crear(contexto, nombre)
         try {
             return usar(base)
         } finally {
