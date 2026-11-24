@@ -31,6 +31,7 @@ internal fun PantallaDetalleMovimiento(
     volver: () -> Unit,
 ) {
     var confirmar by rememberSaveable { mutableStateOf(false) }
+    val vinculado = fila?.pagoId != null
     val eliminando = estadoEliminacion == EstadoEliminacionMovimiento.Eliminando
     val bloqueado = eliminando || estadoEliminacion == EstadoEliminacionMovimiento.Eliminado
     BackHandler(enabled = eliminando) {}
@@ -73,7 +74,7 @@ internal fun PantallaDetalleMovimiento(
                     }
                 }
             }
-            BotonPrincipal("Editar movimiento", habilitado = !bloqueado, alPulsar = editar)
+            BotonPrincipal(if (vinculado) "Editar fecha y nota" else "Editar movimiento", habilitado = !bloqueado, alPulsar = editar)
             TextButton(
                 onClick = {
                     limpiarError()
@@ -82,7 +83,7 @@ internal fun PantallaDetalleMovimiento(
                 enabled = !bloqueado,
                 modifier = Modifier.fillMaxWidth(),
                 colors = ButtonDefaults.textButtonColors(contentColor = RojoGasto),
-            ) { Text("Eliminar movimiento") }
+            ) { Text(if (vinculado) "Deshacer pago" else "Eliminar movimiento") }
         }
     }
 
@@ -94,12 +95,20 @@ internal fun PantallaDetalleMovimiento(
         }
         AlertDialog(
             onDismissRequest = ::cerrarConfirmacion,
-            title = { Text("¿Eliminar movimiento?") },
+            title = { Text(if (vinculado) "¿Deshacer pago?" else "¿Eliminar movimiento?") },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("Se eliminará «${fila.titulo()}» (${fila.montoConSigno()}). Esta acción es irreversible.")
+                    if (vinculado) {
+                        Text("«${fila.titulo()}» volverá a Pendientes y se retirará el gasto.")
+                    } else {
+                        Text("Se eliminará «${fila.titulo()}» (${fila.montoConSigno()}). Esta acción es irreversible.")
+                    }
                     if (estadoEliminacion == EstadoEliminacionMovimiento.Error) {
-                        Text("No se pudo eliminar el movimiento. Vuelve a intentarlo.", color = RojoGasto)
+                        Text(
+                            if (vinculado) "No se pudo deshacer el pago. Vuelve a intentarlo."
+                            else "No se pudo eliminar el movimiento. Vuelve a intentarlo.",
+                            color = RojoGasto,
+                        )
                     }
                 }
             },
@@ -108,7 +117,14 @@ internal fun PantallaDetalleMovimiento(
                     onClick = eliminar,
                     enabled = !eliminando,
                     colors = ButtonDefaults.textButtonColors(contentColor = RojoGasto),
-                ) { Text(if (eliminando) "Eliminando…" else "Eliminar") }
+                ) {
+                    Text(when {
+                        eliminando && vinculado -> "Guardando…"
+                        eliminando -> "Eliminando…"
+                        vinculado -> "Deshacer pago"
+                        else -> "Eliminar"
+                    })
+                }
             },
             dismissButton = { TextButton(onClick = ::cerrarConfirmacion, enabled = !eliminando) { Text("Cancelar") } },
             properties = DialogProperties(dismissOnBackPress = !eliminando, dismissOnClickOutside = !eliminando),
