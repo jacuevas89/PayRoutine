@@ -15,6 +15,7 @@ import cl.payroutine.datos.local.dao.PagoPendienteDao
 import cl.payroutine.datos.local.dao.PresupuestoDao
 import cl.payroutine.datos.local.dao.PresupuestoMensualDao
 import cl.payroutine.datos.local.dao.RecordatorioMovimientoDao
+import cl.payroutine.datos.local.dao.RecordatorioPagoDao
 import cl.payroutine.datos.local.dao.UsuarioDao
 import cl.payroutine.datos.local.entidad.Categoria
 import cl.payroutine.datos.local.entidad.Movimiento
@@ -24,6 +25,8 @@ import cl.payroutine.datos.local.entidad.Presupuesto
 import cl.payroutine.datos.local.entidad.PresupuestoMensual
 import cl.payroutine.datos.local.entidad.PreferenciasPresupuesto
 import cl.payroutine.datos.local.entidad.RecordatorioMovimiento
+import cl.payroutine.datos.local.entidad.RecordatorioPago
+import cl.payroutine.datos.local.entidad.PreferenciasAvisosPago
 import cl.payroutine.datos.local.entidad.Usuario
 
 @Database(
@@ -31,13 +34,15 @@ import cl.payroutine.datos.local.entidad.Usuario
         Categoria::class, Movimiento::class, Presupuesto::class,
         PagoPendiente::class, Usuario::class, RecordatorioMovimiento::class,
         PresupuestoMensual::class, PreferenciasPresupuesto::class, ObligacionPago::class,
+        PreferenciasAvisosPago::class, RecordatorioPago::class,
     ],
-    version = 8,
+    version = 9,
     autoMigrations = [
         AutoMigration(from = 1, to = 2),
         AutoMigration(from = 2, to = 3, spec = MigracionCategoriasPredefinidas::class),
         AutoMigration(from = 3, to = 4),
         AutoMigration(from = 4, to = 5),
+        AutoMigration(from = 8, to = 9),
     ],
 )
 @TypeConverters(ConvertidoresRoom::class)
@@ -50,6 +55,7 @@ abstract class BaseDatosPayRoutine : RoomDatabase() {
     abstract fun obligacionPagoDao(): ObligacionPagoDao
     abstract fun usuarioDao(): UsuarioDao
     abstract fun recordatorioMovimientoDao(): RecordatorioMovimientoDao
+    abstract fun recordatorioPagoDao(): RecordatorioPagoDao
 
     companion object {
         fun crear(contexto: Context, nombre: String = "payroutine.db"): BaseDatosPayRoutine =

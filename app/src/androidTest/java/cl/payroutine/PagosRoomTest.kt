@@ -243,7 +243,7 @@ class PagosRoomTest {
                 val pendiente = repositorio.observarPagosPendientes().first().single()
                 assertEquals("Pendiente anterior", pendiente.pago.descripcion)
                 assertNull(pendiente.nombreCategoria)
-                assertEquals(8, base.openHelper.readableDatabase.version)
+                assertEquals(9, base.openHelper.readableDatabase.version)
             } finally {
                 base.close()
             }
@@ -273,7 +273,7 @@ class PagosRoomTest {
             try {
                 val repositorio = RepositorioFinanzas(base)
                 val cuotas = repositorio.observarPagosConCategoria().first()
-                assertEquals(8, base.openHelper.readableDatabase.version)
+                assertEquals(9, base.openHelper.readableDatabase.version)
                 assertEquals(listOf(8, 8), cuotas.map { it.pago.obligacionId })
                 assertEquals(listOf(true, false), cuotas.map { it.pago.pagado })
                 assertEquals("Computación", cuotas.first().nombreObligacion)
@@ -301,7 +301,7 @@ class PagosRoomTest {
             val base = BaseDatosPayRoutine.crear(contexto, nombre)
             try {
                 val repositorio = RepositorioFinanzas(base)
-                assertEquals(8, base.openHelper.readableDatabase.version)
+                assertEquals(9, base.openHelper.readableDatabase.version)
                 assertEquals("recordatorio", repositorio.obtenerRecordatorio()?.programacionId)
                 assertTrue(repositorio.existePresupuesto(YearMonth.of(2026, 11)))
                 val pago = repositorio.observarPagos().first().single()
@@ -329,13 +329,41 @@ class PagosRoomTest {
             val base = BaseDatosPayRoutine.crear(contexto, nombre)
             try {
                 val repositorio = RepositorioFinanzas(base)
-                assertEquals(8, base.openHelper.readableDatabase.version)
+                assertEquals(9, base.openHelper.readableDatabase.version)
                 val anterior = repositorio.observarPagos().first().first()
                 assertTrue(anterior.pagado)
                 assertNull(anterior.movimientoId)
                 assertTrue(repositorio.observarMovimientos().first().isEmpty())
                 repositorio.pagarVencimientos(listOf(9), LocalDate.now(), "")
                 assertEquals(9, repositorio.observarMovimientosConCategoria().first().single().pagoId)
+            } finally {
+                base.close()
+            }
+        } finally {
+            contexto.deleteDatabase(nombre)
+        }
+        Unit
+    }
+
+    @Test
+    fun migraVersionOchoConservandoElVinculoPagoGastoYSinActivarAvisos() = runBlocking {
+        val nombre = "pagos-v8-${UUID.randomUUID()}.db"
+        try {
+            prepararBaseAnterior(nombre, 8) {
+                execSQL("INSERT INTO Usuario VALUES ('perfil-v8', 'Perfil anterior', 'Anterior')")
+                execSQL("INSERT INTO Categoria VALUES (42, 'Servicios', 'Gasto', 1)")
+                execSQL("INSERT INTO Movimiento (id, tipo, monto, fecha, categoria_id, nombre) VALUES (17, 'Gasto', 12000, 0, 42, 'Equipo')")
+                execSQL("INSERT INTO ObligacionPago VALUES (8, 'Equipo', 42)")
+                execSQL("INSERT INTO PagoPendiente VALUES (7, 'Equipo', 12000, 0, 0, NULL, NULL, 1, 8, 17)")
+            }
+            val base = BaseDatosPayRoutine.crear(contexto, nombre)
+            try {
+                val repositorio = RepositorioFinanzas(base)
+                assertEquals(9, base.openHelper.readableDatabase.version)
+                assertEquals(17, repositorio.observarPagos().first().single().movimientoId)
+                assertEquals(7, repositorio.observarMovimientosConCategoria().first().single().pagoId)
+                assertNull(repositorio.observarPreferenciasAvisosPago("perfil-v8").first())
+                assertTrue(repositorio.observarSeleccionAvisosPago().first().isEmpty())
             } finally {
                 base.close()
             }

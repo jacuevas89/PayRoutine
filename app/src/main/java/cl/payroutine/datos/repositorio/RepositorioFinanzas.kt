@@ -7,6 +7,10 @@ import cl.payroutine.datos.local.entidad.Categoria
 import cl.payroutine.datos.local.entidad.Movimiento
 import cl.payroutine.datos.local.entidad.ObligacionPago
 import cl.payroutine.datos.local.entidad.PagoPendiente
+import cl.payroutine.datos.local.entidad.PreferenciasAvisosPago
+import cl.payroutine.datos.local.entidad.RecordatorioPago
+import cl.payroutine.datos.local.entidad.aLaHora
+import cl.payroutine.datos.local.entidad.proximoAviso
 import cl.payroutine.datos.local.entidad.Presupuesto
 import cl.payroutine.datos.local.entidad.RecordatorioMovimiento
 import cl.payroutine.datos.local.entidad.TipoMovimiento
@@ -19,6 +23,7 @@ import cl.payroutine.datos.local.normalizarNombreCategoria
 import java.time.LocalDate
 import java.time.ZoneId
 import java.time.YearMonth
+import java.time.ZonedDateTime
 import java.math.RoundingMode
 import java.util.Date
 import kotlinx.coroutines.flow.map
@@ -31,6 +36,7 @@ class RepositorioFinanzas(private val baseDatos: BaseDatosPayRoutine) {
     private val obligacionPagoDao = baseDatos.obligacionPagoDao()
     private val usuarioDao = baseDatos.usuarioDao()
     private val recordatorioDao = baseDatos.recordatorioMovimientoDao()
+    private val avisoPagoDao = baseDatos.recordatorioPagoDao()
     private val mensualDao = baseDatos.presupuestoMensualDao()
 
     fun observarUsuario() = usuarioDao.observar()
@@ -80,6 +86,73 @@ class RepositorioFinanzas(private val baseDatos: BaseDatosPayRoutine) {
     fun observarPagos() = pagoPendienteDao.observarTodos()
     fun observarPagosConCategoria() = pagoPendienteDao.observarConCategoria()
     fun observarPagosPendientes() = observarPagosConCategoria().map { pagos -> pagos.filterNot { it.pago.pagado } }
+
+    internal fun observarPreferenciasAvisosPago(usuarioId: String) = avisoPagoDao.observarPreferencias(usuarioId)
+    internal fun observarSeleccionAvisosPago() = avisoPagoDao.seleccionados()
+
+    internal suspend fun guardarPreferenciasAvisosPago(
+        usuarioId: String,
+        cambiar: (PreferenciasAvisosPago) -> PreferenciasAvisosPago,
+    ) = baseDatos.withTransaction {
+        if (usuarioDao.idActual() != usuarioId) return@withTransaction
+        val anteriores = avisoPagoDao.preferencias() ?: PreferenciasAvisosPago(usuarioId)
+        val nuevas = cambiar(anteriores)
+        avisoPagoDao.guardarPreferencias(nuevas)
+        if (nuevas.anticipacion != anteriores.anticipacion || nuevas.minuto != anteriores.minuto ||
+            nuevas.frecuencia != anteriores.frecuencia
+        ) avisoPagoDao.invalidarProgramaciones()
+    }
+
+    internal suspend fun seleccionarAvisosPago(usuarioId: String, ids: List<Int>, seleccionar: Boolean) = baseDatos.withTransaction {
+        if (usuarioDao.idActual() != usuarioId) return@withTransaction
+        if (seleccionar) {
+            val pendientes = ids.distinct().filter { pagoPendienteDao.buscarPorId(it)?.pagado == false }
+            avisoPagoDao.seleccionar(pendientes.map { RecordatorioPago(it) })
+        } else avisoPagoDao.deseleccionar(ids)
+    }
+
+    internal suspend fun planificarAvisosPago(
+        ahora: ZonedDateTime,
+        entregar: Boolean,
+        conservarHoraTranscurrida: Boolean,
+    ): PlanAvisosPago = baseDatos.withTransaction {
+        val preferencias = avisoPagoDao.preferencias()
+        if (preferencias?.activo != true) return@withTransaction PlanAvisosPago()
+        val hoy = ahora.toLocalDate()
+        val entregarAhora = mutableListOf<PagoPendiente>()
+        var siguiente: ZonedDateTime? = null
+        val filas = avisoPagoDao.pendientesSeleccionados()
+        for ((pago, guardado) in filas) {
+            val local = pago.fechaVencimiento.toInstant().atZone(ahora.zone).toLocalDate()
+            val marca = pago.fechaVencimiento.time
+            val anterior = if (guardado.vencimientoProgramado != null && guardado.vencimientoProgramado != marca) {
+                RecordatorioPago(pago.id)
+            } else guardado
+            val listo = anterior.diaVencimientoProgramado == local.toEpochDay() &&
+                anterior.diaProgramado == hoy.toEpochDay() && anterior.ultimoAviso != hoy.toEpochDay() &&
+                !ahora.isBefore(preferencias.aLaHora(hoy, ahora))
+            val actualizado = if (listo && entregar) {
+                entregarAhora.add(pago)
+                anterior.copy(diaProgramado = null, ultimoAviso = hoy.toEpochDay())
+            } else anterior
+            val proximo = preferencias.proximoAviso(
+                actualizado, local, ahora, conservarHoraTranscurrida,
+            )
+            val nuevo = actualizado.copy(
+                vencimientoProgramado = marca,
+                diaVencimientoProgramado = local.toEpochDay(),
+                diaProgramado = proximo?.toEpochDay(),
+            )
+            if (nuevo != guardado) {
+                avisoPagoDao.actualizarPrograma(pago.id, marca, local.toEpochDay(), nuevo.diaProgramado, nuevo.ultimoAviso)
+            }
+            proximo?.let {
+                val turno = preferencias.aLaHora(it, ahora)
+                if (siguiente == null || turno.isBefore(siguiente)) siguiente = turno
+            }
+        }
+        PlanAvisosPago(preferencias.usuarioId, filas.map { it.pago }, entregarAhora, siguiente)
+    }
 
     suspend fun registrarPagoUnico(datos: NuevoPagoUnico): Long = baseDatos.withTransaction {
         require(datos.monto in 1..MONTO_MAXIMO_EXACTO) { "El monto debe ser un número positivo de pesos enteros" }
@@ -152,6 +225,7 @@ class RepositorioFinanzas(private val baseDatos: BaseDatosPayRoutine) {
             require(pagoPendienteDao.marcarPagado(pago.id, Math.toIntExact(movimientoId)) == 1) {
                 "La selección cambió. Vuelve a elegir los vencimientos pendientes."
             }
+            avisoPagoDao.reiniciarVencimiento(pago.id)
         }
     }
 
@@ -333,3 +407,10 @@ class RepositorioFinanzas(private val baseDatos: BaseDatosPayRoutine) {
     suspend fun eliminar(presupuesto: Presupuesto) = presupuestoDao.eliminar(presupuesto)
     suspend fun eliminar(pago: PagoPendiente) = pagoPendienteDao.eliminar(pago)
 }
+
+internal data class PlanAvisosPago(
+    val usuarioId: String? = null,
+    val pendientes: List<PagoPendiente> = emptyList(),
+    val entregar: List<PagoPendiente> = emptyList(),
+    val siguiente: ZonedDateTime? = null,
+)

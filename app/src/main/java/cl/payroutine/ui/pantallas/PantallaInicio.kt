@@ -67,6 +67,7 @@ internal fun PantallaInicio(
     datos: DatosInicio?,
     verMovimientos: () -> Unit,
     verPagos: () -> Unit,
+    verPago: (Int) -> Unit,
     verRecordatorios: () -> Unit,
     verAjustes: () -> Unit,
     verMovimiento: (Int) -> Unit,
@@ -118,7 +119,7 @@ internal fun PantallaInicio(
             when {
                 datos == null -> Etiqueta("Cargando pagos…")
                 datos.pagosPendientes.isEmpty() -> Etiqueta("No tienes pagos vencidos ni por vencer este mes.")
-                else -> datos.pagosPendientes.forEach { TarjetaPagoInicio(it, verPagos) }
+                else -> datos.pagosPendientes.forEach { pago -> TarjetaPagoInicio(pago) { verPago(pago.pago.id) } }
             }
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                 Text("Últimos movimientos", fontSize = 16.sp, fontWeight = FontWeight.SemiBold)

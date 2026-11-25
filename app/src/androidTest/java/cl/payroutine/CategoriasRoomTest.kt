@@ -75,7 +75,7 @@ class CategoriasRoomTest {
             val reabierto = RepositorioFinanzas(base)
             reabierto.prepararCategoriasIniciales()
             assertEquals(categorias, reabierto.observarCategorias().first())
-            assertEquals(8, base.openHelper.readableDatabase.version)
+            assertEquals(9, base.openHelper.readableDatabase.version)
         } finally {
             base.close()
             contexto.deleteDatabase(nombreBase)

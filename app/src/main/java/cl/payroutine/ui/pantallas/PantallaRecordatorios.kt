@@ -22,6 +22,7 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.state.ToggleableState
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
@@ -30,8 +31,12 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import cl.payroutine.datos.local.entidad.RecordatorioMovimiento
 import cl.payroutine.datos.local.entidad.RecurrenciaRecordatorio
 import cl.payroutine.datos.local.entidad.PreferenciasPresupuesto
+import cl.payroutine.datos.local.entidad.PreferenciasAvisosPago
+import cl.payroutine.datos.local.entidad.FrecuenciaAvisoPago
 import cl.payroutine.recordatorios.CANAL_MOVIMIENTOS
 import cl.payroutine.ui.theme.RojoGasto
+import cl.payroutine.viewmodel.EstadoPagos
+import cl.payroutine.viewmodel.FechaLocal
 import java.time.Instant
 import java.time.LocalDate
 import java.time.LocalTime
@@ -44,7 +49,7 @@ private val idiomaSelectores = Locale.forLanguageTag("es-ES")
 private val formatoHora = DateTimeFormatter.ofPattern("HH:mm", idiomaSelectores)
 private val formatoDia = DateTimeFormatter.ofPattern("EEEE", idiomaSelectores)
 private val formatoProximo = DateTimeFormatter.ofPattern("EEEE d 'de' MMMM, HH:mm", idiomaSelectores)
-private enum class HorarioRecordatorio { Movimientos, Presupuesto }
+private enum class HorarioRecordatorio { Movimientos, Presupuesto, Pagos }
 
 @OptIn(ExperimentalLayoutApi::class, ExperimentalMaterial3Api::class)
 @Composable
@@ -57,23 +62,34 @@ internal fun PantallaRecordatorios(
     actualizar: ((RecordatorioMovimiento) -> RecordatorioMovimiento) -> Unit,
     presupuesto: PreferenciasPresupuesto,
     actualizarPresupuesto: ((PreferenciasPresupuesto) -> PreferenciasPresupuesto) -> Unit,
+    preferenciasPagos: PreferenciasAvisosPago,
+    pagos: EstadoPagos,
+    fechaPagos: FechaLocal,
+    seleccionPagos: Set<Int>,
+    actualizarPagos: ((PreferenciasAvisosPago) -> PreferenciasAvisosPago) -> Unit,
+    seleccionarPagos: (List<Int>, Boolean) -> Unit,
+    notificacionesPagosHabilitadas: () -> Boolean,
     volver: () -> Unit,
 ) {
     val contexto = LocalContext.current
     val ciclo = LocalLifecycleOwner.current.lifecycle
     val comprobarPermiso by rememberUpdatedState(notificacionesHabilitadas)
+    val comprobarPermisoPagos by rememberUpdatedState(notificacionesPagosHabilitadas)
     val comprobarPrecision by rememberUpdatedState(alarmasExactasHabilitadas)
     val comprobarSonido by rememberUpdatedState(canalSilenciado)
     var permitido by remember { mutableStateOf(comprobarPermiso()) }
+    var pagosPermitidos by remember { mutableStateOf(comprobarPermisoPagos()) }
     var preciso by remember { mutableStateOf(comprobarPrecision()) }
     var silenciado by remember { mutableStateOf(comprobarSonido()) }
     val solicitud = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {
         permitido = comprobarPermiso()
+        pagosPermitidos = comprobarPermisoPagos()
     }
     DisposableEffect(ciclo) {
         val observador = LifecycleEventObserver { _, evento ->
             if (evento == Lifecycle.Event.ON_RESUME) {
                 permitido = comprobarPermiso()
+                pagosPermitidos = comprobarPermisoPagos()
                 preciso = comprobarPrecision()
                 silenciado = comprobarSonido()
             }
@@ -172,7 +188,9 @@ internal fun PantallaRecordatorios(
                 FilaConfiguracion("Horario del aviso", hora.format(formatoHora)) { elegirHora = HorarioRecordatorio.Presupuesto }
                 Etiqueta("Si el día elegido no existe, recibirás el aviso el último día del mes.")
             }
-            if ((configuracion.activo || presupuesto.avisoActivo) && !preciso && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            if ((configuracion.activo || presupuesto.avisoActivo || preferenciasPagos.activo) &&
+                !preciso && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
+            ) {
                 Tarjeta(Modifier.fillMaxWidth(), espacio = 8) {
                     Destacado("Horario aproximado")
                     Etiqueta("Para recibir el aviso a la hora elegida, permite que PayRoutine programe alarmas exactas.")
@@ -196,15 +214,24 @@ internal fun PantallaRecordatorios(
                 }
             }
             if (error) Etiqueta("No se pudo actualizar el aviso. Vuelve a intentarlo.", RojoGasto)
-            Tarjeta(Modifier.fillMaxWidth()) {
-                Destacado("Avisos de pagos")
-                Etiqueta("Estarán disponibles cuando se complete la gestión de pagos.")
-            }
+            ConfiguracionAvisosPagos(
+                preferenciasPagos, pagos, fechaPagos, seleccionPagos, pagosPermitidos, actualizarPagos, seleccionarPagos,
+                elegirHora = { elegirHora = HorarioRecordatorio.Pagos },
+                alActivar = ::pedirNotificaciones,
+                abrirAjustes = {
+                    contexto.startActivity(Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
+                        .putExtra(Settings.EXTRA_APP_PACKAGE, contexto.packageName))
+                },
+            )
         }
     }
 
     elegirHora?.let { tipo -> SelectoresEnEspanol {
-        val minuto = if (tipo == HorarioRecordatorio.Presupuesto) presupuesto.minutoAviso else configuracion.minutoDelDia
+        val minuto = when (tipo) {
+            HorarioRecordatorio.Movimientos -> configuracion.minutoDelDia
+            HorarioRecordatorio.Presupuesto -> presupuesto.minutoAviso
+            HorarioRecordatorio.Pagos -> preferenciasPagos.minuto
+        }
         val reloj = rememberTimePickerState(minuto / 60, minuto % 60, is24Hour = true)
         AlertDialog(
             onDismissRequest = { elegirHora = null },
@@ -213,8 +240,11 @@ internal fun PantallaRecordatorios(
             confirmButton = {
                 TextButton(onClick = {
                     val nuevoMinuto = reloj.hour * 60 + reloj.minute
-                    if (tipo == HorarioRecordatorio.Presupuesto) actualizarPresupuesto { it.copy(minutoAviso = nuevoMinuto) }
-                    else actualizar { it.copy(minutoDelDia = nuevoMinuto) }
+                    when (tipo) {
+                        HorarioRecordatorio.Movimientos -> actualizar { it.copy(minutoDelDia = nuevoMinuto) }
+                        HorarioRecordatorio.Presupuesto -> actualizarPresupuesto { it.copy(minutoAviso = nuevoMinuto) }
+                        HorarioRecordatorio.Pagos -> actualizarPagos { it.copy(minuto = nuevoMinuto) }
+                    }
                     elegirHora = null
                 }) { Text("Guardar") }
             },
@@ -280,6 +310,111 @@ internal fun PantallaRecordatorios(
             }
         }
     } }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun ConfiguracionAvisosPagos(
+    preferencias: PreferenciasAvisosPago,
+    estado: EstadoPagos,
+    fecha: FechaLocal,
+    seleccion: Set<Int>,
+    permitido: Boolean,
+    actualizar: ((PreferenciasAvisosPago) -> PreferenciasAvisosPago) -> Unit,
+    seleccionar: (List<Int>, Boolean) -> Unit,
+    elegirHora: () -> Unit,
+    alActivar: () -> Unit,
+    abrirAjustes: () -> Unit,
+) {
+    Tarjeta(Modifier.fillMaxWidth(), espacio = 12) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Destacado("Avisos de pagos")
+                Etiqueta("Selecciona las obligaciones o cuotas que quieres recordar.")
+            }
+            Switch(
+                checked = preferencias.activo,
+                modifier = Modifier.semantics { contentDescription = "Activar avisos de pagos" },
+                onCheckedChange = { activo ->
+                    actualizar { it.copy(activo = activo) }
+                    if (activo) alActivar()
+                },
+            )
+        }
+        if (!permitido) {
+            Etiqueta("Notificaciones de pagos bloqueadas", RojoGasto)
+            Enlace("Abrir ajustes de notificaciones de pagos", abrirAjustes)
+        }
+        FilaConfiguracion("Hora de los avisos de pagos",
+            LocalTime.of(preferencias.minuto / 60, preferencias.minuto % 60).format(formatoHora), elegirHora)
+        Destacado("Anticipación")
+        FlowRow(Modifier.selectableGroup(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            for (dias in listOf(0, 1, 3, 7)) {
+                val titulo = when (dias) {
+                    0 -> "El mismo día"
+                    1 -> "1 día antes"
+                    else -> "$dias días antes"
+                }
+                Pildora(titulo, preferencias.anticipacion == dias) { actualizar { it.copy(anticipacion = dias) } }
+            }
+        }
+        Destacado("Repetir aviso de pago")
+        FlowRow(Modifier.selectableGroup(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            for (opcion in FrecuenciaAvisoPago.entries) {
+                val titulo = when (opcion) {
+                    FrecuenciaAvisoPago.UnaVez -> "Una vez"
+                    FrecuenciaAvisoPago.Diaria -> "Cada día"
+                    FrecuenciaAvisoPago.CadaTresDias -> "Cada 3 días"
+                    FrecuenciaAvisoPago.Semanal -> "Cada semana"
+                }
+                Pildora(titulo, preferencias.frecuencia == opcion) { actualizar { it.copy(frecuencia = opcion) } }
+            }
+        }
+        HorizontalDivider()
+        when {
+            estado.cargando -> Etiqueta("Cargando vencimientos…")
+            estado.errorCarga -> Etiqueta("No se pudieron cargar los vencimientos.", RojoGasto)
+            estado.pendientes.isEmpty() -> Etiqueta("No tienes vencimientos pendientes.")
+            else -> estado.pagos.groupBy { fila ->
+                fila.pago.obligacionId?.let { true to it } ?: (false to fila.pago.id)
+            }.values.forEach { grupo ->
+                val pendientes = grupo.filterNot { it.pago.pagado }
+                val primero = pendientes.firstOrNull() ?: return@forEach
+                if (primero.pago.esCuota && primero.pago.obligacionId != null) {
+                    val ids = pendientes.map { it.pago.id }
+                    val nombre = primero.nombreObligacion ?: primero.pago.descripcion
+                    val completos = ids.all { it in seleccion }
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        TriStateCheckbox(
+                            state = when {
+                                completos -> ToggleableState.On
+                                ids.any { it in seleccion } -> ToggleableState.Indeterminate
+                                else -> ToggleableState.Off
+                            },
+                            onClick = { seleccionar(if (completos) grupo.map { it.pago.id } else ids, !completos) },
+                            modifier = Modifier.semantics { contentDescription = "Avisos de $nombre" },
+                        )
+                        Destacado(nombre)
+                    }
+                }
+                pendientes.forEach { fila ->
+                    val pago = fila.pago
+                    val dia = pago.fechaVencimiento.toInstant().atZone(fecha.zona).toLocalDate()
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Checkbox(
+                            checked = pago.id in seleccion,
+                            onCheckedChange = { seleccionar(listOf(pago.id), it) },
+                            modifier = Modifier.semantics { contentDescription = "Aviso de ${pago.descripcion}" },
+                        )
+                        Column(Modifier.weight(1f)) {
+                            Destacado(pago.descripcion)
+                            Etiqueta("${montoEnPantalla(pago.monto)} · ${fechaEnPantalla(dia)}")
+                        }
+                    }
+                }
+            }
+        }
+    }
 }
 
 @Composable

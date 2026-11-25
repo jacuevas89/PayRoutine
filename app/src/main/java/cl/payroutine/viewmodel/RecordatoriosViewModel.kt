@@ -8,6 +8,7 @@ import androidx.lifecycle.viewModelScope
 import cl.payroutine.PayRoutineApplication
 import cl.payroutine.datos.local.entidad.RecordatorioMovimiento
 import cl.payroutine.datos.local.entidad.PreferenciasPresupuesto
+import cl.payroutine.datos.local.entidad.PreferenciasAvisosPago
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
@@ -18,7 +19,10 @@ internal class RecordatoriosViewModel(aplicacion: Application) : AndroidViewMode
     val error = errorInterno.asStateFlow()
 
     fun observar(usuarioId: String) = recordatorios.observar(usuarioId)
+    fun observarPreferenciasPagos(usuarioId: String) = recordatorios.observarPreferenciasPagos(usuarioId)
+    fun observarSeleccionPagos() = recordatorios.observarSeleccionPagos()
     fun notificacionesHabilitadas() = recordatorios.notificacionesHabilitadas()
+    fun notificacionesPagosHabilitadas() = recordatorios.notificacionesPagosHabilitadas()
     fun alarmasExactasHabilitadas() = recordatorios.alarmasExactasHabilitadas()
     fun canalSilenciado() = recordatorios.canalSilenciado()
 
@@ -29,6 +33,12 @@ internal class RecordatoriosViewModel(aplicacion: Application) : AndroidViewMode
 
     fun actualizarPresupuesto(usuarioId: String, cambiar: (PreferenciasPresupuesto) -> PreferenciasPresupuesto) =
         ejecutar { recordatorios.actualizarAvisoPresupuesto(usuarioId, cambiar) }
+
+    fun actualizarPagos(usuarioId: String, cambiar: (PreferenciasAvisosPago) -> PreferenciasAvisosPago) =
+        ejecutar { recordatorios.actualizarPreferenciasPagos(usuarioId, cambiar) }
+
+    fun seleccionarPagos(usuarioId: String, vencimientos: List<Int>, seleccionar: Boolean) =
+        ejecutar { recordatorios.seleccionarPagos(usuarioId, vencimientos, seleccionar) }
 
     private fun ejecutar(operacion: suspend () -> Unit) {
         viewModelScope.launch {

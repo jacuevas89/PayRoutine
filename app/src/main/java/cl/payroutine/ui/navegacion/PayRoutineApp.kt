@@ -39,6 +39,7 @@ import cl.payroutine.datos.local.entidad.TipoMovimiento
 import cl.payroutine.datos.local.entidad.RecordatorioMovimiento
 import cl.payroutine.datos.local.entidad.Usuario
 import cl.payroutine.datos.local.entidad.PreferenciasPresupuesto
+import cl.payroutine.datos.local.entidad.PreferenciasAvisosPago
 import cl.payroutine.ui.pantallas.*
 import cl.payroutine.ui.theme.*
 import cl.payroutine.viewmodel.DatosInicio
@@ -97,6 +98,7 @@ internal fun PayRoutineApp(
     presupuesto: PresupuestoViewModel,
     usuarioDelAviso: String?,
     avisoDePresupuesto: Boolean,
+    vencimientoDelAviso: Int?,
     consumirAviso: () -> Unit,
 ) {
     val estado by perfil.estado.collectAsState()
@@ -122,6 +124,7 @@ internal fun PayRoutineApp(
         presupuesto = presupuesto,
         usuarioDelAviso = usuarioDelAviso,
         avisoDePresupuesto = avisoDePresupuesto,
+        vencimientoDelAviso = vencimientoDelAviso,
         consumirAviso = consumirAviso,
         registrar = perfil::registrar,
     )
@@ -146,6 +149,7 @@ internal fun NavegacionPayRoutine(
     presupuesto: PresupuestoViewModel? = null,
     usuarioDelAviso: String? = null,
     avisoDePresupuesto: Boolean = false,
+    vencimientoDelAviso: Int? = null,
     consumirAviso: () -> Unit = {},
     registrar: (String, String) -> Unit,
 ) {
@@ -188,7 +192,7 @@ internal fun NavegacionPayRoutine(
                 prepararEdicion, guardarEdicion, eliminarDatos, limpiarErrorBorrado,
                 categorias, reintentarCategorias, crearCategoria, limpiarCreacionCategoria,
                 estadoPagos, reintentarPagos,
-                recordatorios, presupuesto, preferencias, usuarioDelAviso, avisoDePresupuesto, consumirAviso,
+                recordatorios, presupuesto, preferencias, usuarioDelAviso, avisoDePresupuesto, vencimientoDelAviso, consumirAviso,
             )
         }
     }
@@ -215,6 +219,7 @@ private fun NavegacionPrincipal(
     preferenciasPresupuesto: PreferenciasPresupuesto?,
     usuarioDelAviso: String?,
     avisoDePresupuesto: Boolean,
+    vencimientoDelAviso: Int?,
     consumirAviso: () -> Unit,
 ) {
     val navegador = rememberNavController()
@@ -255,10 +260,14 @@ private fun NavegacionPrincipal(
         }
     }
 
-    LaunchedEffect(usuarioDelAviso, avisoDePresupuesto, entradaActual) {
+    LaunchedEffect(usuarioDelAviso, avisoDePresupuesto, vencimientoDelAviso, entradaActual) {
         if (usuarioDelAviso != null && entradaActual != null) {
             if (usuarioDelAviso == usuario.id) {
-                if (avisoDePresupuesto) {
+                if (vencimientoDelAviso != null) {
+                    if (entradaActual.destination.route != "$DETALLE_PAGO/{id}" ||
+                        entradaActual.arguments?.getInt("id") != vencimientoDelAviso
+                    ) abrir(entradaActual, "$DETALLE_PAGO/$vencimientoDelAviso")
+                } else if (avisoDePresupuesto) {
                     periodoPresupuesto = YearMonth.now().toString()
                     irA(entradaActual, Seccion.Presupuesto)
                 } else if (entradaActual.destination.route != NUEVO_MOVIMIENTO) {
@@ -309,6 +318,7 @@ private fun NavegacionPrincipal(
                         datos = datosActuales,
                         verMovimientos = { irA(origen, Seccion.Movimientos) },
                         verPagos = { irA(origen, Seccion.Pagos) },
+                        verPago = { abrir(origen, "$DETALLE_PAGO/$it") },
                         verRecordatorios = { abrir(origen, RECORDATORIOS) },
                         verAjustes = { abrir(origen, AJUSTES) },
                         verMovimiento = { abrir(origen, "$DETALLE_MOVIMIENTO/$it") },
@@ -334,11 +344,11 @@ private fun NavegacionPrincipal(
                         elegirPeriodo = { periodoPresupuesto = it.toString() },
                         editar = {
                             presupuesto?.limpiarError()
-                            abrir(origen, "$EDITAR_PRESUPUESTO/false")
+                            abrir(origen, "$EDITAR_PRESUPUESTO/$mes/false")
                         },
                         copiar = {
                             presupuesto?.limpiarError()
-                            abrir(origen, "$EDITAR_PRESUPUESTO/true")
+                            abrir(origen, "$EDITAR_PRESUPUESTO/$mes/true")
                         },
                         cambiarAutomatico = {
                             if (operacion != OperacionPresupuesto.Guardando && datosActuales != null) {
@@ -347,7 +357,7 @@ private fun NavegacionPrincipal(
                             }
                         },
                         estado = operacion,
-                        verExcedido = { abrir(origen, "$PRESUPUESTO_EXCEDIDO/$it") },
+                        verExcedido = { abrir(origen, "$PRESUPUESTO_EXCEDIDO/$mes/$it") },
                     )
                     if (confirmarAutomatico) ConfirmarPresupuestoAutomatico(
                         actual,
@@ -425,10 +435,10 @@ private fun NavegacionPrincipal(
                     ) { volver(origen) }
                 }
                 composable(
-                    "$PRESUPUESTO_EXCEDIDO/{categoria}",
-                    arguments = listOf(navArgument("categoria") { type = NavType.IntType }),
+                    "$PRESUPUESTO_EXCEDIDO/{periodo}/{categoria}",
+                    arguments = listOf(navArgument("periodo") { type = NavType.StringType }, navArgument("categoria") { type = NavType.IntType }),
                 ) { origen ->
-                    val mes = YearMonth.parse(periodoPresupuesto)
+                    val mes = YearMonth.parse(requireNotNull(origen.arguments?.getString("periodo")))
                     val id = requireNotNull(origen.arguments).getInt("categoria")
                     val periodo = presupuestosActuales?.get(mes)
                     PantallaPresupuestoExcedido(
@@ -438,14 +448,14 @@ private fun NavegacionPrincipal(
                         movimientosDelPeriodo(datosActuales, mes).filter { !it.esIngreso() && (id == 0 || it.movimiento.categoriaId == id) },
                         datosActuales?.fecha?.zona ?: ZoneId.systemDefault(),
                         volver = { volver(origen) },
-                        editar = { abrir(origen, "$EDITAR_PRESUPUESTO/false") },
+                        editar = { abrir(origen, "$EDITAR_PRESUPUESTO/$mes/false") },
                     )
                 }
                 composable(
-                    "$EDITAR_PRESUPUESTO/{copiar}",
-                    arguments = listOf(navArgument("copiar") { type = NavType.BoolType }),
+                    "$EDITAR_PRESUPUESTO/{periodo}/{copiar}",
+                    arguments = listOf(navArgument("periodo") { type = NavType.StringType }, navArgument("copiar") { type = NavType.BoolType }),
                 ) { origen ->
-                    val mes = YearMonth.parse(periodoPresupuesto)
+                    val mes = YearMonth.parse(requireNotNull(origen.arguments?.getString("periodo")))
                     val copiar = requireNotNull(origen.arguments).getBoolean("copiar")
                     val operacion = presupuesto?.estadoOperacion?.collectAsState()?.value ?: OperacionPresupuesto.Disponible
                     if (presupuesto == null || presupuestosActuales != null) PantallaEditarPresupuesto(
@@ -520,6 +530,10 @@ private fun NavegacionPrincipal(
                     val configuraciones = remember(recordatorios, usuario.id) { recordatorios?.observar(usuario.id) }
                     val configuracion = configuraciones?.collectAsState(initial = null)?.value
                     val error = recordatorios?.error?.collectAsState()?.value ?: false
+                    val preferenciasPagos = remember(recordatorios, usuario.id) { recordatorios?.observarPreferenciasPagos(usuario.id) }
+                        ?.collectAsState(initial = null)?.value
+                    val seleccionPagos = remember(recordatorios) { recordatorios?.observarSeleccionPagos() }
+                        ?.collectAsState(initial = emptyList())?.value.orEmpty().toSet()
                     PantallaRecordatorios(
                         configuracion = configuracion ?: RecordatorioMovimiento(usuario.id),
                         error = error,
@@ -529,6 +543,13 @@ private fun NavegacionPrincipal(
                         actualizar = { recordatorios?.actualizar(usuario.id, it) },
                         presupuesto = preferenciasActuales ?: PreferenciasPresupuesto(usuario.id),
                         actualizarPresupuesto = { recordatorios?.actualizarPresupuesto(usuario.id, it) },
+                        preferenciasPagos = preferenciasPagos ?: PreferenciasAvisosPago(usuario.id),
+                        pagos = pagosActuales,
+                        fechaPagos = fechaPagos,
+                        seleccionPagos = seleccionPagos,
+                        actualizarPagos = { recordatorios?.actualizarPagos(usuario.id, it) },
+                        seleccionarPagos = { ids, seleccionar -> recordatorios?.seleccionarPagos(usuario.id, ids, seleccionar) },
+                        notificacionesPagosHabilitadas = { recordatorios?.notificacionesPagosHabilitadas() ?: true },
                     ) { volver(origen) }
                 }
                 composable(CALENDARIO) { origen ->

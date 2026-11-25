@@ -19,9 +19,13 @@ import cl.payroutine.MainActivity
 import cl.payroutine.R
 import cl.payroutine.datos.local.entidad.RecordatorioMovimiento
 import cl.payroutine.datos.local.entidad.PreferenciasPresupuesto
+import cl.payroutine.datos.local.entidad.PreferenciasAvisosPago
+import cl.payroutine.datos.local.entidad.PagoPendiente
 import cl.payroutine.datos.local.entidad.fechaAviso
 import cl.payroutine.datos.local.entidad.indice
 import cl.payroutine.datos.repositorio.RepositorioFinanzas
+import cl.payroutine.ui.pantallas.fechaEnPantalla
+import cl.payroutine.ui.pantallas.montoEnPantalla
 import java.time.LocalDate
 import java.time.YearMonth
 import java.time.ZonedDateTime
@@ -31,17 +35,22 @@ import kotlinx.coroutines.sync.withLock
 
 internal const val ABRIR_NUEVO_MOVIMIENTO = "cl.payroutine.recordatorios.ABRIR_NUEVO_MOVIMIENTO"
 internal const val ABRIR_PRESUPUESTO = "cl.payroutine.recordatorios.ABRIR_PRESUPUESTO"
+internal const val ABRIR_PAGO = "cl.payroutine.recordatorios.ABRIR_PAGO"
 internal const val EXTRA_USUARIO = "usuario"
+internal const val EXTRA_VENCIMIENTO = "vencimiento"
 internal const val AVISO_MOVIMIENTO = "cl.payroutine.recordatorios.AVISO_MOVIMIENTO"
 internal const val AVISO_PRESUPUESTO = "cl.payroutine.recordatorios.AVISO_PRESUPUESTO"
 internal const val GENERAR_PRESUPUESTO = "cl.payroutine.recordatorios.GENERAR_PRESUPUESTO"
+internal const val AVISO_PAGOS = "cl.payroutine.recordatorios.AVISO_PAGOS"
 internal const val EXTRA_PROGRAMACION = "programacion"
 internal const val EXTRA_DIA = "dia"
 internal const val CANAL_MOVIMIENTOS = "recordatorio_movimientos"
 private const val CANAL_PRESUPUESTO = "recordatorio_presupuesto"
+internal const val CANAL_PAGOS = "recordatorios_pagos"
 private const val ID_AVISO = 91
 private const val ID_AVISO_PRESUPUESTO = 92
 private const val ID_GENERAR_PRESUPUESTO = 93
+private const val ID_ALARMA_PAGOS = 94
 private const val FLAGS_ALARMA = PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_ONE_SHOT
 
 internal class RecordatoriosMovimientos(
@@ -53,6 +62,8 @@ internal class RecordatoriosMovimientos(
     private val mutex = Mutex()
 
     fun observar(usuarioId: String) = repositorio.observarRecordatorio(usuarioId)
+    fun observarPreferenciasPagos(usuarioId: String) = repositorio.observarPreferenciasAvisosPago(usuarioId)
+    fun observarSeleccionPagos() = repositorio.observarSeleccionAvisosPago()
 
     fun alarmasExactasHabilitadas(): Boolean =
         Build.VERSION.SDK_INT < Build.VERSION_CODES.S || alarmas.canScheduleExactAlarms()
@@ -61,6 +72,7 @@ internal class RecordatoriosMovimientos(
         ?.let { it.importance < NotificationManager.IMPORTANCE_DEFAULT || it.sound == null } ?: false
 
     fun notificacionesHabilitadas(): Boolean = notificacionesHabilitadas(CANAL_MOVIMIENTOS)
+    fun notificacionesPagosHabilitadas(): Boolean = notificacionesHabilitadas(CANAL_PAGOS)
 
     private fun notificacionesHabilitadas(canal: String): Boolean {
         if (Build.VERSION.SDK_INT >= 33 &&
@@ -92,6 +104,61 @@ internal class RecordatoriosMovimientos(
         val ahora = ZonedDateTime.now()
         if (!siFalta || alarmaExistente() == null) programar(repositorio.obtenerRecordatorio(), ahora)
         prepararPresupuesto(ahora, siFalta)
+        prepararAvisosPagos(ahora, conservarHora = siFalta && alarmaExistente(AVISO_PAGOS, ID_ALARMA_PAGOS) != null)
+    }
+
+    suspend fun actualizarPreferenciasPagos(usuarioId: String, cambiar: (PreferenciasAvisosPago) -> PreferenciasAvisosPago) =
+        mutex.withLock {
+            repositorio.guardarPreferenciasAvisosPago(usuarioId, cambiar)
+            prepararAvisosPagos(ZonedDateTime.now())
+        }
+
+    suspend fun seleccionarPagos(usuarioId: String, ids: List<Int>, seleccionar: Boolean) = mutex.withLock {
+        repositorio.seleccionarAvisosPago(usuarioId, ids, seleccionar)
+        val conservar = alarmaExistente(AVISO_PAGOS, ID_ALARMA_PAGOS) != null
+        prepararAvisosPagos(ZonedDateTime.now(), conservarHora = conservar)
+    }
+
+    suspend fun restaurarPagos() = mutex.withLock {
+        val conservar = alarmaExistente(AVISO_PAGOS, ID_ALARMA_PAGOS) != null
+        prepararAvisosPagos(ZonedDateTime.now(), conservarHora = conservar)
+    }
+
+    suspend fun recibirAvisosPagos(instante: Long, ahora: ZonedDateTime = ZonedDateTime.now()) = mutex.withLock {
+        if (ahora.toInstant().toEpochMilli() >= instante) prepararAvisosPagos(ahora, entregar = notificacionesPagosHabilitadas())
+    }
+
+    private suspend fun prepararAvisosPagos(
+        ahora: ZonedDateTime,
+        entregar: Boolean = false,
+        conservarHora: Boolean = false,
+    ) {
+        val plan = repositorio.planificarAvisosPago(ahora, entregar, conservarHora)
+        val pendientes = plan.pendientes.associateBy { it.id }
+        notificaciones.activeNotifications.filter { it.tag == CANAL_PAGOS }.forEach { aviso ->
+            val pago = pendientes[aviso.id]
+            if (pago == null || aviso.notification.extras.getCharSequence(android.app.Notification.EXTRA_TITLE)?.toString() != pago.descripcion ||
+                aviso.notification.extras.getCharSequence(android.app.Notification.EXTRA_TEXT)?.toString() != textoPago(pago, ahora)
+            ) notificaciones.cancel(CANAL_PAGOS, aviso.id)
+        }
+        val siguiente = plan.siguiente
+        if (siguiente == null) cancelarAlarma(AVISO_PAGOS, ID_ALARMA_PAGOS)
+        else {
+            val intent = intencionAlarma(AVISO_PAGOS).putExtra(EXTRA_DIA, siguiente.toInstant().toEpochMilli())
+            agendar(generarAlarma(AVISO_PAGOS, ID_ALARMA_PAGOS, intent), siguiente)
+        }
+        val usuarioId = plan.usuarioId ?: return
+        plan.entregar.forEach { pago ->
+            publicar(
+                usuarioId, pago.id, CANAL_PAGOS, "Vencimientos de pagos",
+                ABRIR_PAGO, pago.descripcion, textoPago(pago, ahora), pago.id,
+            )
+        }
+    }
+
+    private fun textoPago(pago: PagoPendiente, ahora: ZonedDateTime): String {
+        val fecha = pago.fechaVencimiento.toInstant().atZone(ahora.zone).toLocalDate()
+        return "${montoEnPantalla(pago.monto)} · Vence el ${fechaEnPantalla(fecha)}"
     }
 
     suspend fun restaurarPresupuesto() = mutex.withLock { prepararPresupuesto(ZonedDateTime.now()) }
@@ -175,12 +242,14 @@ internal class RecordatoriosMovimientos(
         cancelarAlarma()
         cancelarAlarma(AVISO_PRESUPUESTO, ID_AVISO_PRESUPUESTO)
         cancelarAlarma(GENERAR_PRESUPUESTO, ID_GENERAR_PRESUPUESTO)
+        cancelarAlarma(AVISO_PAGOS, ID_ALARMA_PAGOS)
         notificaciones.cancelAll()
         try {
             repositorio.eliminarTodosLosDatos()
         } catch (error: SQLiteException) {
             programar(repositorio.obtenerRecordatorio(), ZonedDateTime.now())
             prepararPresupuesto(ZonedDateTime.now())
+            prepararAvisosPagos(ZonedDateTime.now())
             throw error
         }
     }
@@ -239,6 +308,7 @@ internal class RecordatoriosMovimientos(
         destino: String = ABRIR_NUEVO_MOVIMIENTO,
         titulo: String = "Registra tus movimientos",
         mensaje: String = "Toca para anotar un gasto o un ingreso en PayRoutine.",
+        vencimientoId: Int? = null,
     ) {
         notificaciones.createNotificationChannel(
             NotificationChannel(canal, nombreCanal, NotificationManager.IMPORTANCE_DEFAULT).apply {
@@ -252,6 +322,7 @@ internal class RecordatoriosMovimientos(
             .setAction(destino)
             .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
             .putExtra(EXTRA_USUARIO, usuarioId)
+        vencimientoId?.let { intent.putExtra(EXTRA_VENCIMIENTO, it) }
         val abrir = PendingIntent.getActivity(
             contexto, id, intent, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_CANCEL_CURRENT,
         )
@@ -262,6 +333,7 @@ internal class RecordatoriosMovimientos(
             .setContentIntent(abrir)
             .setAutoCancel(true)
             .build()
-        notificaciones.notify(id, notificacion)
+        if (vencimientoId == null) notificaciones.notify(id, notificacion)
+        else notificaciones.notify(CANAL_PAGOS, id, notificacion)
     }
 }

@@ -35,6 +35,26 @@ class NavegacionPayRoutineTest {
     val compose = createAndroidComposeRule<ComponentActivity>()
 
     @Test
+    fun avisoDePagoAbreElVencimientoCorrecto() {
+        val estadoPagos = EstadoPagos(cargando = false, pagos = inicio.pagosPendientes.map { PagoConCategoria(it.pago, "Servicios") })
+        compose.setContent {
+            PayRoutineTheme {
+                NavegacionPayRoutine(
+                    estado = EstadoPerfil(cargando = false, usuario = usuario),
+                    inicio = inicio,
+                    reintentarCarga = {},
+                    estadoPagos = estadoPagos,
+                    usuarioDelAviso = usuario.id,
+                    vencimientoDelAviso = estadoPagos.pagos.first().pago.id,
+                    registrar = { _, _ -> },
+                )
+            }
+        }
+        ver("Detalle del pago")
+        ver(estadoPagos.pagos.first().pago.descripcion)
+    }
+
+    @Test
     fun avisoMensualAbrePresupuesto() {
         compose.setContent {
             PayRoutineTheme {
@@ -247,6 +267,9 @@ class NavegacionPayRoutineTest {
 
         tocar("Inicio")
         tocar("Próximo pago: Tarjeta de crédito")
+        ver("Detalle del pago")
+        volver()
+        tocar("Ver pagos")
         ver("Pagos pendientes")
         tocar("Calendario")
         ver("Noviembre 2026")

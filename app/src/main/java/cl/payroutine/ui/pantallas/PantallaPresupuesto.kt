@@ -20,14 +20,13 @@ import cl.payroutine.viewmodel.DatosInicio
 import cl.payroutine.viewmodel.OperacionPresupuesto
 import cl.payroutine.viewmodel.PresupuestoDelMes
 import cl.payroutine.viewmodel.sumarImportes
+import cl.payroutine.viewmodel.movimientosDelMes
 import java.time.YearMonth
 import java.time.ZoneId
 
 internal fun movimientosDelPeriodo(datos: DatosInicio?, mes: YearMonth): List<MovimientoConCategoria> {
     val inicio = datos ?: return emptyList()
-    return inicio.movimientos.filter {
-        YearMonth.from(it.movimiento.fecha.toInstant().atZone(inicio.fecha.zona)) == mes
-    }
+    return movimientosDelMes(inicio.movimientos, mes, inicio.fecha.zona)
 }
 
 @Composable
@@ -47,7 +46,6 @@ internal fun PantallaPresupuesto(
     verExcedido: (Int) -> Unit,
 ) {
     var selector by rememberSaveable { mutableStateOf(false) }
-    val gastado = gastos.totalGastado()
     val porCategoria = gastos.groupBy { it.movimiento.categoriaId }
     Column(Modifier.fillMaxSize()) {
         Cabecera("Presupuesto mensual", accion = if (presupuesto == null) null else "Editar", alAccionar = editar)
@@ -67,6 +65,10 @@ internal fun PantallaPresupuesto(
                 }
                 else -> {
                     val general = presupuesto.datos.modalidad == ModalidadPresupuesto.General
+                    val (conLimite, sinLimite) = gastos.partition {
+                        general || it.movimiento.categoriaId in presupuesto.limites
+                    }
+                    val gastado = conLimite.totalGastado()
                     Tarjeta(Modifier.fillMaxWidth()) {
                         Destacado(if (general) "Presupuesto general" else "Presupuesto por categorías")
                         if (presupuesto.datos.generado) Etiqueta("Generado automáticamente")
@@ -81,6 +83,13 @@ internal fun PantallaPresupuesto(
                             Destacado(categoria.nombre)
                             ResumenLimite(consumo, limite)
                             if (consumo > limite) Enlace("Ver exceso") { verExcedido(categoria.id) }
+                        }
+                    }
+                    if (sinLimite.isNotEmpty()) Tarjeta(Modifier.fillMaxWidth()) {
+                        Destacado("Gastos sin presupuesto")
+                        Etiqueta("Total: ${montoEnPantalla(sinLimite.totalGastado())}")
+                        sinLimite.groupBy { it.movimiento.categoriaId }.values.forEach { filas ->
+                            Etiqueta("${filas.first().categoria}: ${montoEnPantalla(filas.totalGastado())}")
                         }
                     }
                     if (anterior != null) Enlace("Copiar mes anterior", copiar)
@@ -137,11 +146,15 @@ private fun ResumenLimite(gastado: Double, limite: Double) {
     val diferencia = (limite.toBigDecimal() - gastado.toBigDecimal()).abs()
     Cifra("${montoEnPantalla(gastado)} de ${montoEnPantalla(limite)}", tamano = 21)
     Progreso((proporcion * 100).toInt(), color)
-    Etiqueta(
-        if (gastado > limite) "Excedido por ${montoEnPantalla(diferencia)}"
-        else "Disponible: ${montoEnPantalla(diferencia)}",
-        color,
-    )
+    val porcentaje = porcentajeEnPantalla(proporcion)
+    val limiteExacto = porcentajeEnPantalla(1)
+    Etiqueta(when {
+        porcentaje == limiteExacto && gastado > limite -> "Más de $limiteExacto usado"
+        porcentaje == limiteExacto && gastado < limite -> "Menos de $limiteExacto usado"
+        else -> "$porcentaje usado"
+    }, color)
+    Etiqueta("Disponible: ${montoEnPantalla(if (gastado > limite) 0 else diferencia)}", color)
+    if (gastado > limite) Etiqueta("Excedido por ${montoEnPantalla(diferencia)}", RojoGasto)
 }
 
 @Composable
