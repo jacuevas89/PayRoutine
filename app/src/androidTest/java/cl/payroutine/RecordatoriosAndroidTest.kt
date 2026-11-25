@@ -47,7 +47,7 @@ class RecordatoriosAndroidTest {
             val mes = YearMonth.from(ahora)
             repo.registrarUsuario("Perfil con presupuesto", "Prueba")
             val perfil = requireNotNull(repo.observarUsuario().first()).id
-            repo.guardarPresupuestoMensual(perfil, mes, 30_000.0, emptyMap())
+            repo.guardarPresupuestoMensual(perfil, mes, 30000L, emptyMap())
             servicio.actualizarAvisoPresupuesto(perfil) {
                 it.copy(avisoActivo = true, diaAviso = ahora.dayOfMonth, minutoAviso = 0)
             }
