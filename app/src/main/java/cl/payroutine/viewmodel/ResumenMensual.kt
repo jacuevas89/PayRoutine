@@ -58,7 +58,7 @@ internal fun calcularResumenMensual(
         .groupBy { it.movimiento.categoriaId }
         .values
         .map { gastos ->
-            val monto = gastos.sumOf { BigDecimal.valueOf(it.movimiento.monto) }
+            val monto = gastos.sumOf { it.movimiento.monto.toBigDecimal() }
             val proporcion = if (importes.gastos.signum() > 0) {
                 monto.divide(importes.gastos, MathContext.DECIMAL64)
             } else {

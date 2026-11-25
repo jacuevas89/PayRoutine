@@ -80,13 +80,13 @@ class RegistroMovimientosPantallasTest {
     }
 
     @Test
-    fun edicionPrecargaLosCamposYNoInterpretaDecimalesHistoricosComoMiles() {
+    fun edicionPrecargaLosCamposYFormateaLosPesos() {
         val dia = LocalDate.now().minusDays(1)
         val anterior = runBlocking {
             val transporte = repositorio.observarCategorias().first().single { it.nombre == "Transporte" }
             val antiguo = Movimiento(
                 tipo = TipoMovimiento.Gasto,
-                monto = 120.125,
+                monto = 120L,
                 fecha = Date.from(dia.atStartOfDay(ZoneId.systemDefault()).toInstant()),
                 categoriaId = transporte.id,
                 nombre = "Taxi",
@@ -106,18 +106,15 @@ class RegistroMovimientosPantallasTest {
         compose.onNodeWithText("Editar gasto").assertIsDisplayed()
         compose.onNodeWithText("Ingreso").assertDoesNotExist()
         campo("Nombre del movimiento").assertTextContains("Taxi")
-        campo("Monto").assertTextContains("120,125")
+        campo("Monto").assertTextContains("120")
         compose.onNodeWithText(fechaEnPantalla(dia)).assertExists()
         compose.onNodeWithText("Transporte").assertIsSelected()
         campo("Nota (opcional)").performScrollTo().assertTextContains("Al centro")
 
-        compose.onNodeWithText("Guardar cambios").performClick()
-        compose.onNodeWithText("Ingresa pesos enteros", substring = true).assertExists()
-        assertEquals(anterior, runBlocking { repositorio.observarMovimientos().first().single() })
         campo("Monto").performScrollTo().performTextReplacement("1300")
         compose.onNodeWithText("Guardar cambios").performClick()
         compose.waitUntil(10000) { registro.estado.value.idGuardado != null }
-        assertEquals(anterior.copy(monto = 1300.0), runBlocking { repositorio.observarMovimientos().first().single() })
+        assertEquals(anterior.copy(monto = 1300L), runBlocking { repositorio.observarMovimientos().first().single() })
     }
 
     @Test
@@ -141,7 +138,7 @@ class RegistroMovimientosPantallasTest {
         val filas = runBlocking { repositorio.observarMovimientos().first() }
         assertEquals(1, filas.size)
         assertEquals("Sueldo noviembre", filas.single().nombre)
-        assertEquals(500000.0, filas.single().monto, 0.0)
+        assertEquals(500000L, filas.single().monto)
         assertNull(filas.single().nota)
         compose.onNodeWithText("Guardar ingreso").assertIsNotEnabled()
     }

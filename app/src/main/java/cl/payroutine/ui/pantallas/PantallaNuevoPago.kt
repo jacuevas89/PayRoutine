@@ -21,6 +21,7 @@ import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import cl.payroutine.datos.local.entidad.TipoMovimiento
+import cl.payroutine.datos.local.entidad.OpcionesAvisoPago
 import cl.payroutine.datos.repositorio.AjusteCuota
 import cl.payroutine.datos.repositorio.NuevaDeudaEnCuotas
 import cl.payroutine.datos.repositorio.NuevoPagoUnico
@@ -61,6 +62,9 @@ internal fun PantallaNuevoPago(
     var cronograma by rememberSaveable(stateSaver = guardadorCronograma) { mutableStateOf(emptyList<CuotaEditable>()) }
     var claveCronograma by rememberSaveable { mutableStateOf("") }
     var errorCronograma by rememberSaveable { mutableStateOf<String?>(null) }
+    var pagoPorGuardar by rememberSaveable { mutableStateOf<NuevoPagoUnico?>(null) }
+    var deudaPorGuardar by rememberSaveable { mutableStateOf<NuevaDeudaEnCuotas?>(null) }
+    var mostrarEditorAviso by rememberSaveable { mutableStateOf(false) }
     val categorias = estadoCategorias.categorias.map { it.categoria }.filter { it.tipo == TipoMovimiento.Gasto }
     val categoria = categorias.firstOrNull { it.id == categoriaId }
     val fecha = fechaDia?.let(LocalDate::ofEpochDay)
@@ -78,6 +82,29 @@ internal fun PantallaNuevoPago(
         teclado?.hide()
     }
 
+    fun cerrarAviso() {
+        mostrarEditorAviso = false
+        pagoPorGuardar = null
+        deudaPorGuardar = null
+    }
+
+    fun completarPago(opciones: OpcionesAvisoPago?) {
+        pagoPorGuardar?.let { guardar(it.copy(recordatorio = opciones)) }
+        deudaPorGuardar?.let { guardarDeuda(it.copy(recordatorio = opciones)) }
+        cerrarAviso()
+    }
+
+    if (pagoPorGuardar != null || deudaPorGuardar != null) {
+        if (mostrarEditorAviso) EditorAvisoPago(OpcionesAvisoPago(), ::cerrarAviso, ::completarPago)
+        else AlertDialog(
+            onDismissRequest = ::cerrarAviso,
+            title = { Text("¿Quieres configurar un recordatorio?") },
+            text = { Text("Puedes elegir la hora, la anticipación y la frecuencia para este pago.") },
+            confirmButton = { TextButton(onClick = { mostrarEditorAviso = true }) { Text("Configurar ahora") } },
+            dismissButton = { TextButton(onClick = { completarPago(null) }) { Text("Sin recordatorio") } },
+        )
+    }
+
     BackHandler(enabled = bloqueado || mostrarCronograma) {
         if (!bloqueado) mostrarCronograma = false
     }
@@ -91,7 +118,7 @@ internal fun PantallaNuevoPago(
             cambiarCuota = { i, cuota -> cronograma = cronograma.toMutableList().apply { this[i] = cuota } },
             guardar = { cuotas ->
                 if (categoriaDisponible) {
-                    guardarDeuda(NuevaDeudaEnCuotas(nombre, montoTotal, categoria.id, pagadas, cuotas))
+                    deudaPorGuardar = NuevaDeudaEnCuotas(nombre, montoTotal, categoria.id, pagadas, ArrayList(cuotas))
                 }
             },
             volver = { mostrarCronograma = false },
@@ -123,7 +150,7 @@ internal fun PantallaNuevoPago(
                 keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences, imeAction = ImeAction.Next),
                 shape = RoundedCornerShape(12.dp),
             )
-            OutlinedTextField(
+            CampoMonto(
                 value = monto, onValueChange = { monto = it; errorCronograma = null },
                 modifier = Modifier.fillMaxWidth(), enabled = !bloqueado, singleLine = true,
                 label = { Text(if (enCuotas) "Monto total" else "Monto") }, prefix = { Text("$ ") },
@@ -208,7 +235,7 @@ internal fun PantallaNuevoPago(
             if (nombre.isBlank() || montoTotal == null || fecha == null || categoria == null) return@BotonPrincipal
             cerrarTeclado()
             if (!enCuotas) {
-                guardar(NuevoPagoUnico(nombre, montoTotal, fecha, categoria.id))
+                pagoPorGuardar = NuevoPagoUnico(nombre, montoTotal, fecha, categoria.id)
             } else if (cantidad != null && cantidad >= 2 && pagadas != null && pagadas in 0..cantidad) {
                 val clave = listOf(montoTotal, cantidad, fecha, periodicidad, ajuste).joinToString("|")
                 try {

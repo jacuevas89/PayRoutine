@@ -157,6 +157,7 @@ internal fun PantallaPagos(
                                     pago.descripcion, "Vence el ${fechaEnPantalla(vencimiento)}", montoEnPantalla(pago.monto),
                                     "calendar", AzulNoche, FondoSelector,
                                 )
+                                if (!puedePagarse) Etiqueta("Sin categoría")
                                 Row(
                                     Modifier.fillMaxWidth(),
                                     horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -312,7 +313,7 @@ private fun DetalleDeuda(
                     Cifra(montoEnPantalla(abonado + saldo), Color.White)
                     Etiqueta("${pagadas.size} de ${cuotas.size} cuotas pagadas", TextoSobreAzul)
                     Progreso(pagadas.size * 100 / cuotas.size, VerdeMarca)
-                    fila.nombreCategoria?.let { Etiqueta(it, TextoSobreAzul) }
+                    Etiqueta(fila.nombreCategoria ?: "Sin categoría", TextoSobreAzul)
                 }
             }
             item {

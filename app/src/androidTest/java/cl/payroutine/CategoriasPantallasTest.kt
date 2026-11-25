@@ -79,7 +79,7 @@ class CategoriasPantallasTest {
 
         val gasto = runBlocking {
             val alimentacion = repositorio.observarCategorias().first().single { it.nombre == "Alimentación" }
-            val movimiento = Movimiento(tipo = TipoMovimiento.Gasto, monto = 5000.0, fecha = Date(0), categoriaId = alimentacion.id)
+            val movimiento = Movimiento(tipo = TipoMovimiento.Gasto, monto = 5000L, fecha = Date(0), categoriaId = alimentacion.id)
             val id = repositorio.insertar(movimiento).toInt()
             movimiento.copy(id = id)
         }

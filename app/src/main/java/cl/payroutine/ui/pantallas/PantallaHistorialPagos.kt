@@ -72,7 +72,8 @@ internal fun PantallaHistorialPagos(
                         val pago = realizado.fila.pago
                         FilaTarjeta(
                             nombre = pago.descripcion,
-                            detalle = "Pagado el ${fechaEnPantalla(realizado.fechaPago)}",
+                            detalle = "Pagado el ${fechaEnPantalla(realizado.fechaPago)}" +
+                                if (realizado.fila.nombreCategoria == null) " · Sin categoría" else "",
                             monto = montoEnPantalla(pago.monto),
                             icono = "check", colorIcono = VerdeIngreso, fondoIcono = FondoIngreso,
                         ) { verGasto(realizado.movimientoId) }

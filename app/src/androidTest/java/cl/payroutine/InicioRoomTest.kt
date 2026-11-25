@@ -59,17 +59,17 @@ class InicioRoomTest {
             val categoriaGasto = repositorio.insertar(alimentacion).toInt()
             val categoriaIngreso = repositorio.insertar(Categoria(nombre = "Sueldo", tipo = TipoMovimiento.Ingreso)).toInt()
             val fechaRepetida = Date.from(Instant.parse("2026-01-09T12:00:00Z"))
-            val gasto = Movimiento(tipo = TipoMovimiento.Gasto, monto = 24000.25, fecha = fechaRepetida, categoriaId = categoriaGasto)
+            val gasto = Movimiento(tipo = TipoMovimiento.Gasto, monto = 24000L, fecha = fechaRepetida, categoriaId = categoriaGasto)
             val idGasto = repositorio.insertar(gasto).toInt()
-            val idIngreso = repositorio.insertar(gasto.copy(tipo = TipoMovimiento.Ingreso, monto = 120000.75, categoriaId = categoriaIngreso)).toInt()
+            val idIngreso = repositorio.insertar(gasto.copy(tipo = TipoMovimiento.Ingreso, monto = 120001L, categoriaId = categoriaIngreso)).toInt()
             // En Santiago este instante todavía pertenece al 31 de diciembre.
-            val idDiciembre = repositorio.insertar(gasto.copy(monto = 15000.0, fecha = Date.from(Instant.parse("2026-01-01T01:00:00Z")))).toInt()
-            repositorio.insertar(gasto.copy(monto = 5000.0, fecha = Date.from(Instant.parse("2025-12-30T12:00:00Z"))))
+            val idDiciembre = repositorio.insertar(gasto.copy(monto = 15000L, fecha = Date.from(Instant.parse("2026-01-01T01:00:00Z")))).toInt()
+            repositorio.insertar(gasto.copy(monto = 5000L, fecha = Date.from(Instant.parse("2025-12-30T12:00:00Z"))))
 
             val conMovimientos = esperar { it.movimientos.size == 4 }
-            assertEquals(BigDecimal("120000.75"), conMovimientos.ingresos)
-            assertEquals(BigDecimal("24000.25"), conMovimientos.gastos)
-            assertEquals(BigDecimal("96000.50"), conMovimientos.saldo)
+            assertEquals(BigDecimal("120001"), conMovimientos.ingresos)
+            assertEquals(BigDecimal("24000"), conMovimientos.gastos)
+            assertEquals(BigDecimal("96001"), conMovimientos.saldo)
             assertEquals(listOf(idIngreso, idGasto, idDiciembre), conMovimientos.recientes.map { it.movimiento.id })
             assertEquals(listOf("Sueldo", "Alimentación", "Alimentación"), conMovimientos.recientes.map { it.categoria })
 
@@ -89,20 +89,20 @@ class InicioRoomTest {
             assertEquals(listOf("Electricidad", "Internet", "Tarjeta de crédito"), conPagos.pagosPendientes.map { it.pago.descripcion })
             assertEquals(listOf(-11L, 0L, 4L), conPagos.pagosPendientes.map { it.diasParaVencer })
 
-            repositorio.actualizar(gasto.copy(id = idGasto, monto = 30000.0))
+            repositorio.actualizar(gasto.copy(id = idGasto, monto = 30000L))
             repositorio.actualizar(alimentacion.copy(id = categoriaGasto, nombre = "Compras"))
             repositorio.actualizar(vencido.copy(id = idVencido, pagado = true))
             val actualizado = esperar {
-                it.gastos == BigDecimal("30000.0") &&
+                it.gastos == BigDecimal("30000") &&
                     it.recientes[1].categoria == "Compras" &&
                     it.pagosPendientes.none { pago -> pago.pago.id == idVencido }
             }
-            assertEquals(BigDecimal("90000.75"), actualizado.saldo)
+            assertEquals(BigDecimal("90001"), actualizado.saldo)
             assertEquals(listOf("Internet", "Tarjeta de crédito", "Arriendo"), actualizado.pagosPendientes.map { it.pago.descripcion })
 
             val enero = YearMonth.of(2026, 1)
             val diciembre = calcularResumenMensual(actualizado.movimientos, enero.minusMonths(1), zona)
-            assertEquals(BigDecimal("20000.0"), diciembre.importes.gastos)
+            assertEquals(BigDecimal("20000"), diciembre.importes.gastos)
             assertEquals(BigDecimal("0"), diciembre.importes.ingresos)
             assertEquals("Compras", diciembre.distribucion.single().categoria)
 
@@ -112,12 +112,12 @@ class InicioRoomTest {
             val conPasaje = esperar { it.movimientos.any { fila -> fila.movimiento.id == idPasaje } }
             val resumenEnero = calcularResumenMensual(conPasaje.movimientos, enero, zona)
             assertEquals(conPasaje.saldo, resumenEnero.importes.saldo)
-            assertEquals(BigDecimal("40000.0"), resumenEnero.importes.gastos)
+            assertEquals(BigDecimal("40000"), resumenEnero.importes.gastos)
             assertEquals(listOf("Compras", "Transporte"), resumenEnero.distribucion.map { it.categoria })
             assertEquals(listOf(BigDecimal("0.75"), BigDecimal("0.25")), resumenEnero.distribucion.map { it.proporcion })
 
             assertTrue(repositorio.editarMovimiento(idPasaje, pasaje.copy(monto = 30000)))
-            val conEdicion = esperar { it.gastos == BigDecimal("60000.0") }
+            val conEdicion = esperar { it.gastos == BigDecimal("60000") }
             assertTrue(calcularResumenMensual(conEdicion.movimientos, enero, zona).distribucion.all {
                 it.proporcion == BigDecimal("0.5")
             })
@@ -146,7 +146,7 @@ class InicioRoomTest {
 
     private fun pago(descripcion: String, fecha: LocalDate, zona: ZoneId) = PagoPendiente(
         descripcion = descripcion,
-        monto = 120000.0,
+        monto = 120000L,
         fechaVencimiento = Date.from(fecha.atStartOfDay(zona).toInstant()),
         esCuota = false,
         pagado = false,

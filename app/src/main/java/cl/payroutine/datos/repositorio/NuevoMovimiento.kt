@@ -12,7 +12,7 @@ data class NuevoMovimiento(
     val nota: String = "",
 )
 
-// El esquema conserva Double por compatibilidad. Este rango representa pesos enteros sin pérdida.
+// Mantiene el máximo aceptado por los formularios de PayRoutine.
 internal const val MONTO_MAXIMO_EXACTO = 9_007_199_254_740_991L
 
 internal data class MontoValidado(val valor: Long? = null, val error: String? = null)
