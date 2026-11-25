@@ -1,5 +1,6 @@
 package cl.payroutine.datos.repositorio
 
+import cl.payroutine.datos.local.entidad.OpcionesAvisoPago
 import java.math.BigInteger
 import java.time.LocalDate
 
@@ -19,7 +20,7 @@ internal enum class PeriodicidadCuotas(val etiqueta: String) {
 
 internal enum class AjusteCuota { Primera, Ultima }
 
-internal data class CuotaProgramada(val vencimiento: LocalDate, val monto: Long)
+internal data class CuotaProgramada(val vencimiento: LocalDate, val monto: Long) : java.io.Serializable
 
 internal data class NuevaDeudaEnCuotas(
     val nombre: String,
@@ -27,7 +28,8 @@ internal data class NuevaDeudaEnCuotas(
     val categoriaId: Int,
     val cuotasPagadas: Int,
     val cronograma: List<CuotaProgramada>,
-)
+    val recordatorio: OpcionesAvisoPago? = null,
+) : java.io.Serializable
 
 internal fun generarCronogramaCuotas(
     montoTotal: Long,

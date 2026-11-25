@@ -75,7 +75,7 @@ class CategoriasRoomTest {
             val reabierto = RepositorioFinanzas(base)
             reabierto.prepararCategoriasIniciales()
             assertEquals(categorias, reabierto.observarCategorias().first())
-            assertEquals(8, base.openHelper.readableDatabase.version)
+            assertEquals(10, base.openHelper.readableDatabase.version)
         } finally {
             base.close()
             contexto.deleteDatabase(nombreBase)
@@ -119,8 +119,8 @@ class CategoriasRoomTest {
             val personalizada = Categoria(91, "Viajes", TipoMovimiento.Gasto)
             val ingresoConMismoNombre = Categoria(92, "Hogar", TipoMovimiento.Ingreso)
             listOf(alimentacion, personalizada, ingresoConMismoNombre).forEach { repositorio.insertar(it) }
-            val gasto = Movimiento(54, TipoMovimiento.Gasto, 5000.0, Date(0), alimentacion.id, "Compra previa")
-            val presupuesto = Presupuesto(31, alimentacion.id, 40000.0, 11, 2026)
+            val gasto = Movimiento(54, TipoMovimiento.Gasto, 5000L, Date(0), alimentacion.id, "Compra previa")
+            val presupuesto = Presupuesto(31, alimentacion.id, 40000L, 11, 2026)
             repositorio.insertar(gasto)
             repositorio.insertar(presupuesto)
             repositorio.registrarUsuario("María Pérez", "Mari")

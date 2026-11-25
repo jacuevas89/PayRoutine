@@ -67,7 +67,7 @@ internal fun FormularioMovimiento(
     }
     var nombre by rememberSaveable(idEdicion) { mutableStateOf(movimientoInicial?.nombre.orEmpty()) }
     var monto by rememberSaveable(idEdicion) {
-        val texto = movimientoInicial?.monto?.toBigDecimal()?.stripTrailingZeros()?.toPlainString()?.replace('.', ',')
+        val texto = movimientoInicial?.monto?.toString()
         mutableStateOf(texto.orEmpty())
     }
     var nota by rememberSaveable(idEdicion) { mutableStateOf(movimientoInicial?.nota.orEmpty()) }
@@ -127,7 +127,7 @@ internal fun FormularioMovimiento(
                 shape = RoundedCornerShape(12.dp),
             )
             Tarjeta(Modifier.fillMaxWidth(), espacio = 4) {
-                OutlinedTextField(
+                CampoMonto(
                     value = monto, onValueChange = { monto = it },
                     modifier = Modifier.fillMaxWidth(), enabled = !bloqueado,
                     readOnly = soloFechaYNota,

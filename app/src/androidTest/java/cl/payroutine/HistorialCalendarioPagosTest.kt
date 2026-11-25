@@ -32,11 +32,11 @@ class HistorialCalendarioPagosTest {
     private val venceAnticipado = fecha.hoy.plusDays(5)
     private val venceAtrasado = diciembre.withDayOfMonth(28)
     private val estado = EstadoPagos(cargando = false, pagos = listOf(
-        pago(1, "Pago atrasado", 15000.0, venceAtrasado, fecha.hoy),
-        pago(2, "Pago puntual", 5000.0, fecha.hoy, fecha.hoy),
-        pago(3, "Pago pendiente", 9000.0, fecha.hoy),
-        pago(4, "Pago anticipado", 12000.0, venceAnticipado, fechaAnticipada),
-        pago(5, "Cuota histórica", 1000.0, venceAnticipado, respaldoHistorico = true),
+        pago(1, "Pago atrasado", 15000L, venceAtrasado, fecha.hoy),
+        pago(2, "Pago puntual", 5000L, fecha.hoy, fecha.hoy),
+        pago(3, "Pago pendiente", 9000L, fecha.hoy),
+        pago(4, "Pago anticipado", 12000L, venceAnticipado, fechaAnticipada),
+        pago(5, "Cuota histórica", 1000L, venceAnticipado, respaldoHistorico = true),
     ))
 
     @Test
@@ -111,7 +111,7 @@ class HistorialCalendarioPagosTest {
     private fun pago(
         id: Int,
         nombre: String,
-        monto: Double,
+        monto: Long,
         vence: LocalDate,
         pagado: LocalDate? = null,
         respaldoHistorico: Boolean = false,

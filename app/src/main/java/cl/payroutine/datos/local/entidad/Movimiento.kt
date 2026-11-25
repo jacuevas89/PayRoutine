@@ -13,7 +13,7 @@ import java.util.Date
         ForeignKey(
             entity = Categoria::class,
             parentColumns = ["id"],
-            childColumns = ["categoria_id"],
+            childColumns = ["categoria_id"], onDelete = ForeignKey.SET_NULL,
         ),
     ],
     indices = [Index("categoria_id")],
@@ -21,9 +21,9 @@ import java.util.Date
 data class Movimiento(
     @PrimaryKey(autoGenerate = true) val id: Int = 0,
     val tipo: TipoMovimiento,
-    val monto: Double,
+    val monto: Long,
     val fecha: Date,
-    @ColumnInfo(name = "categoria_id") val categoriaId: Int,
+    @ColumnInfo(name = "categoria_id") val categoriaId: Int?,
     val nota: String? = null,
     @ColumnInfo(defaultValue = "''") val nombre: String = "",
 )

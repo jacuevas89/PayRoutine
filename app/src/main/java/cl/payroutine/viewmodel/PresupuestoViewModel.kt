@@ -17,11 +17,11 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
-internal data class PresupuestoDelMes(val datos: PresupuestoMensual, val limites: Map<Int, Double>) {
-    val total: Double get() = datos.limiteGeneral ?: limites.values.sumarImportes()
+internal data class PresupuestoDelMes(val datos: PresupuestoMensual, val limites: Map<Int, Long>, val sinCategoria: java.math.BigDecimal = java.math.BigDecimal.ZERO) {
+    val total get() = datos.limiteGeneral?.toBigDecimal() ?: limites.values.sumarImportes() + sinCategoria
 }
 
-internal fun Iterable<Double>.sumarImportes(): Double = sumOf { it.toBigDecimal() }.toDouble()
+internal fun Iterable<Long>.sumarImportes() = sumOf { it.toBigDecimal() }
 
 internal enum class OperacionPresupuesto { Disponible, Guardando, Error }
 
@@ -36,6 +36,7 @@ internal class PresupuestoViewModel(aplicacion: Application) : AndroidViewModel(
             PresupuestoDelMes(
                 periodo.first().cabecera,
                 periodo.mapNotNull { fila -> fila.categoriaId?.let { id -> id to requireNotNull(fila.limite) } }.toMap(),
+                periodo.filter { it.categoriaId == null }.mapNotNull { it.limite }.sumarImportes(),
             )
         }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
@@ -43,7 +44,7 @@ internal class PresupuestoViewModel(aplicacion: Application) : AndroidViewModel(
     fun preferencias(usuarioId: String) = repositorio.observarPreferenciasPresupuesto(usuarioId)
         .map { it ?: PreferenciasPresupuesto(usuarioId) }
 
-    fun guardar(usuario: String, mes: YearMonth, general: Double?, limites: Map<Int, Double>, volver: () -> Unit) =
+    fun guardar(usuario: String, mes: YearMonth, general: Long?, limites: Map<Int, Long>, volver: () -> Unit) =
         ejecutar(volver) { repositorio.guardarPresupuestoMensual(usuario, mes, general, limites) }
 
     fun omitir(usuario: String) = ejecutar {

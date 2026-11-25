@@ -33,7 +33,7 @@ class RegistroUsuarioTest {
                 assertFalse(categorias.single { it.id == 1 }.esPredefinida)
                 assertEquals(16, categorias.count { it.esPredefinida })
                 assertEquals("Compra", repositorio.observarMovimientos().first().single().nota)
-                assertEquals(40000.0, repositorio.observarPresupuestos().first().single().montoPresupuestado, 0.0)
+                assertEquals(40000L, repositorio.observarPresupuestos().first().single().montoPresupuestado)
                 assertEquals("Internet", repositorio.observarPagos().first().single().descripcion)
 
                 val nombre = "María-José D'Ávila"

@@ -38,6 +38,9 @@ interface PagoPendienteDao {
     @Query("SELECT * FROM PagoPendiente WHERE id = :id")
     suspend fun buscarPorId(id: Int): PagoPendiente?
 
+    @Query("SELECT * FROM PagoPendiente WHERE obligacion_id = :obligacionId ORDER BY id")
+    suspend fun obtenerCuotas(obligacionId: Int): List<PagoPendiente>
+
     @Query("SELECT id FROM PagoPendiente WHERE movimiento_id = :movimientoId")
     suspend fun buscarIdPorMovimiento(movimientoId: Int): Int?
 

@@ -54,7 +54,7 @@ class RegistroPagoPantallaTest {
     fun marcaPagadoDesdeLaTarjetaSinAbrirElDetalle() {
         val fecha = FechaLocal(LocalDate.of(2026, 11, 29), ZoneOffset.UTC)
         val pago = PagoPendiente(
-            id = 7, descripcion = "Internet", monto = 12000.0, esCuota = false, pagado = false,
+            id = 7, descripcion = "Internet", monto = 12000L, esCuota = false, pagado = false,
             fechaVencimiento = Date.from(fecha.hoy.atStartOfDay(fecha.zona).toInstant()),
         )
         var abrioDetalle = false
@@ -81,7 +81,7 @@ class RegistroPagoPantallaTest {
     @Test
     fun seleccionaDosVencimientosYRevisaElTotalAntesDeConfirmar() {
         val fecha = FechaLocal(LocalDate.of(2026, 11, 29), ZoneOffset.UTC)
-        val filas = listOf("Internet" to 12000.0, "Agua" to 8000.0, "Seguro" to 15000.0).mapIndexed { indice, (nombre, monto) ->
+        val filas = listOf("Internet" to 12000L, "Agua" to 8000L, "Seguro" to 15000L).mapIndexed { indice, (nombre, monto) ->
             val dia = if (indice == 2) fecha.hoy.plusMonths(2) else fecha.hoy.plusDays(indice.toLong() + 3)
             PagoConCategoria(PagoPendiente(
                 id = indice + 1, descripcion = nombre, monto = monto, esCuota = false, pagado = false,
@@ -138,7 +138,7 @@ class RegistroPagoPantallaTest {
             val pago = PagoPendiente(
                 id = 1,
                 descripcion = "Internet",
-                monto = 1000.0,
+                monto = 1000L,
                 fechaVencimiento = Date.from(vencimiento.atStartOfDay(fecha.zona).toInstant()),
                 esCuota = false,
                 pagado = false,
@@ -235,11 +235,12 @@ class RegistroPagoPantallaTest {
 
             val guardar = compose.onNodeWithText("Guardar pago pendiente").fetchSemanticsNode().config[SemanticsActions.OnClick].action!!
             compose.runOnIdle { guardar(); guardar() }
+            compose.onNodeWithText("Sin recordatorio").performClick()
             compose.waitUntil(10000) { registro.estado.value.idGuardado != null }
             val fila = runBlocking { repositorio.observarPagosPendientes().first().single() }
             assertEquals("Internet", fila.pago.descripcion)
             assertEquals("Servicios", fila.nombreCategoria)
-            assertEquals(24990.0, fila.pago.monto, 0.0)
+            assertEquals(24990L, fila.pago.monto)
             assertEquals(vencimiento, fila.pago.fechaVencimiento.toInstant().atZone(ZoneId.systemDefault()).toLocalDate())
         } finally {
             base.close()

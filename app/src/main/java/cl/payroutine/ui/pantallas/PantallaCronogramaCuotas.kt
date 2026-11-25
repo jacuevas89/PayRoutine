@@ -93,7 +93,7 @@ internal fun PantallaCronogramaCuotas(
                             }
                         },
                     )
-                    OutlinedTextField(
+                    CampoMonto(
                         value = cuota.monto,
                         onValueChange = { cambiarCuota(indice, cuota.copy(monto = it)) },
                         label = { Text("Monto de la cuota $numero") },
