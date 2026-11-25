@@ -3,11 +3,16 @@ package cl.payroutine.datos.repositorio
 import androidx.room.withTransaction
 import cl.payroutine.datos.local.BaseDatosPayRoutine
 import cl.payroutine.datos.local.categoriasPredefinidas
+import cl.payroutine.datos.local.consejosPredefinidos
+import cl.payroutine.datos.local.repartirPesos
 import cl.payroutine.datos.local.entidad.Categoria
+import cl.payroutine.datos.local.entidad.AvisoEmitido
 import cl.payroutine.datos.local.entidad.Movimiento
 import cl.payroutine.datos.local.entidad.ObligacionPago
 import cl.payroutine.datos.local.entidad.PagoPendiente
-import cl.payroutine.datos.local.entidad.PreferenciasAvisosPago
+import cl.payroutine.datos.local.entidad.ConfiguracionAvisoPago
+import cl.payroutine.datos.local.entidad.OpcionesAvisoPago
+import cl.payroutine.datos.local.entidad.claveAvisoPago
 import cl.payroutine.datos.local.entidad.RecordatorioPago
 import cl.payroutine.datos.local.entidad.aLaHora
 import cl.payroutine.datos.local.entidad.proximoAviso
@@ -40,6 +45,19 @@ class RepositorioFinanzas(private val baseDatos: BaseDatosPayRoutine) {
     private val mensualDao = baseDatos.presupuestoMensualDao()
 
     fun observarUsuario() = usuarioDao.observar()
+    internal fun observarHistorialAvisos(usuarioId: String) = baseDatos.avisoEmitidoDao().observar(usuarioId)
+    internal suspend fun guardarAviso(aviso: AvisoEmitido) {
+        baseDatos.withTransaction {
+            if (usuarioDao.idActual() == aviso.usuarioId) baseDatos.avisoEmitidoDao().guardar(aviso)
+        }
+    }
+    internal suspend fun marcarAvisosLeidos(usuarioId: String, ids: List<String>) = baseDatos.withTransaction {
+        ids.chunked(400).forEach { baseDatos.avisoEmitidoDao().marcarLeidos(usuarioId, it) }
+    }
+    internal suspend fun eliminarAviso(usuarioId: String, id: String) = baseDatos.avisoEmitidoDao().eliminar(usuarioId, id)
+    internal suspend fun eliminarHistorialAvisos(usuarioId: String) = baseDatos.avisoEmitidoDao().eliminarTodos(usuarioId)
+    fun observarConsejos() = baseDatos.consejoAhorroDao().observar()
+    suspend fun prepararConsejos() = baseDatos.consejoAhorroDao().guardar(consejosPredefinidos)
 
     fun observarRecordatorio(usuarioId: String) = recordatorioDao.observar(usuarioId)
     suspend fun obtenerRecordatorio() = recordatorioDao.obtener()
@@ -49,6 +67,7 @@ class RepositorioFinanzas(private val baseDatos: BaseDatosPayRoutine) {
         require(nombreCompleto.isNotBlank() && apodo.isNotBlank())
         baseDatos.withTransaction {
             cargarCategoriasPredefinidas()
+            prepararConsejos()
             val nuevoUsuario = !usuarioDao.existe()
             usuarioDao.registrarSiFalta(nombreCompleto.trim(), apodo.trim())
             if (nuevoUsuario) {
@@ -87,57 +106,63 @@ class RepositorioFinanzas(private val baseDatos: BaseDatosPayRoutine) {
     fun observarPagosConCategoria() = pagoPendienteDao.observarConCategoria()
     fun observarPagosPendientes() = observarPagosConCategoria().map { pagos -> pagos.filterNot { it.pago.pagado } }
 
-    internal fun observarPreferenciasAvisosPago(usuarioId: String) = avisoPagoDao.observarPreferencias(usuarioId)
-    internal fun observarSeleccionAvisosPago() = avisoPagoDao.seleccionados()
+    internal fun observarConfiguracionesAvisosPago(usuarioId: String): kotlinx.coroutines.flow.Flow<List<cl.payroutine.datos.local.dao.ConfiguracionConProgramacion>> =
+        avisoPagoDao.observarConfiguraciones(usuarioId)
 
-    internal suspend fun guardarPreferenciasAvisosPago(
-        usuarioId: String,
-        cambiar: (PreferenciasAvisosPago) -> PreferenciasAvisosPago,
-    ) = baseDatos.withTransaction {
-        if (usuarioDao.idActual() != usuarioId) return@withTransaction
-        val anteriores = avisoPagoDao.preferencias() ?: PreferenciasAvisosPago(usuarioId)
-        val nuevas = cambiar(anteriores)
-        avisoPagoDao.guardarPreferencias(nuevas)
-        if (nuevas.anticipacion != anteriores.anticipacion || nuevas.minuto != anteriores.minuto ||
-            nuevas.frecuencia != anteriores.frecuencia
-        ) avisoPagoDao.invalidarProgramaciones()
-    }
+    internal suspend fun guardarConfiguracionAvisoPago(usuarioId: String, pagoId: Int, opciones: OpcionesAvisoPago?) =
+        baseDatos.withTransaction {
+            if (usuarioDao.idActual() != usuarioId) return@withTransaction
+            configurarAvisoPago(usuarioId, pagoId, opciones)
+        }
 
-    internal suspend fun seleccionarAvisosPago(usuarioId: String, ids: List<Int>, seleccionar: Boolean) = baseDatos.withTransaction {
-        if (usuarioDao.idActual() != usuarioId) return@withTransaction
-        if (seleccionar) {
-            val pendientes = ids.distinct().filter { pagoPendienteDao.buscarPorId(it)?.pagado == false }
-            avisoPagoDao.seleccionar(pendientes.map { RecordatorioPago(it) })
-        } else avisoPagoDao.deseleccionar(ids)
+    private suspend fun configurarAvisoPago(usuarioId: String, pagoId: Int, opciones: OpcionesAvisoPago?) {
+        val pago = pagoPendienteDao.buscarPorId(pagoId) ?: return
+        val obligacion = pago.obligacionId
+        val clave = claveAvisoPago(obligacion, pago.id)
+        val cuotas = obligacion?.let { pagoPendienteDao.obtenerCuotas(it) } ?: listOf(pago)
+        val ids = cuotas.map { it.id }
+        if (opciones == null) {
+            ids.chunked(400).forEach { avisoPagoDao.deseleccionar(it) }
+            avisoPagoDao.eliminarConfiguracion(clave)
+            return
+        }
+        val anterior = avisoPagoDao.configuracion(clave)
+        val nueva = ConfiguracionAvisoPago(clave, usuarioId, obligacion, pago.id.takeIf { obligacion == null }, true, opciones)
+        avisoPagoDao.guardarPreferencias(nueva)
+        if (anterior == null) avisoPagoDao.seleccionar(cuotas.filterNot { it.pagado }.map { RecordatorioPago(it.id) })
+        else if (anterior.opciones != opciones || !anterior.activo) {
+            ids.chunked(400).forEach { avisoPagoDao.invalidarProgramaciones(it) }
+        }
     }
 
     internal suspend fun planificarAvisosPago(
         ahora: ZonedDateTime,
         entregar: Boolean,
         conservarHoraTranscurrida: Boolean,
+        publicarEnAndroid: Boolean = true,
     ): PlanAvisosPago = baseDatos.withTransaction {
-        val preferencias = avisoPagoDao.preferencias()
-        if (preferencias?.activo != true) return@withTransaction PlanAvisosPago()
+        val usuarioId = usuarioDao.idActual() ?: return@withTransaction PlanAvisosPago()
         val hoy = ahora.toLocalDate()
         val entregarAhora = mutableListOf<PagoPendiente>()
         var siguiente: ZonedDateTime? = null
         val filas = avisoPagoDao.pendientesSeleccionados()
-        for ((pago, guardado) in filas) {
+        for ((pago, guardado, configuracion) in filas) {
+            val opciones = configuracion.opciones
             val local = pago.fechaVencimiento.toInstant().atZone(ahora.zone).toLocalDate()
             val marca = pago.fechaVencimiento.time
             val anterior = if (guardado.vencimientoProgramado != null && guardado.vencimientoProgramado != marca) {
                 RecordatorioPago(pago.id)
             } else guardado
+            val diaProgramado = anterior.diaProgramado
             val listo = anterior.diaVencimientoProgramado == local.toEpochDay() &&
-                anterior.diaProgramado == hoy.toEpochDay() && anterior.ultimoAviso != hoy.toEpochDay() &&
-                !ahora.isBefore(preferencias.aLaHora(hoy, ahora))
+                diaProgramado != null && diaProgramado in (hoy.toEpochDay() - 1)..hoy.toEpochDay() &&
+                anterior.ultimoAviso != hoy.toEpochDay() &&
+                !ahora.isBefore(opciones.aLaHora(LocalDate.ofEpochDay(diaProgramado), ahora))
             val actualizado = if (listo && entregar) {
                 entregarAhora.add(pago)
-                anterior.copy(diaProgramado = null, ultimoAviso = hoy.toEpochDay())
+                anterior.copy(diaProgramado = null, ultimoAviso = if (publicarEnAndroid) hoy.toEpochDay() else anterior.ultimoAviso)
             } else anterior
-            val proximo = preferencias.proximoAviso(
-                actualizado, local, ahora, conservarHoraTranscurrida,
-            )
+            val proximo = opciones.proximoAviso(actualizado, local, ahora, conservarHoraTranscurrida)
             val nuevo = actualizado.copy(
                 vencimientoProgramado = marca,
                 diaVencimientoProgramado = local.toEpochDay(),
@@ -147,11 +172,11 @@ class RepositorioFinanzas(private val baseDatos: BaseDatosPayRoutine) {
                 avisoPagoDao.actualizarPrograma(pago.id, marca, local.toEpochDay(), nuevo.diaProgramado, nuevo.ultimoAviso)
             }
             proximo?.let {
-                val turno = preferencias.aLaHora(it, ahora)
+                val turno = opciones.aLaHora(it, ahora)
                 if (siguiente == null || turno.isBefore(siguiente)) siguiente = turno
             }
         }
-        PlanAvisosPago(preferencias.usuarioId, filas.map { it.pago }, entregarAhora, siguiente)
+        PlanAvisosPago(usuarioId, filas.map { it.pago }, entregarAhora, siguiente)
     }
 
     suspend fun registrarPagoUnico(datos: NuevoPagoUnico): Long = baseDatos.withTransaction {
@@ -159,16 +184,18 @@ class RepositorioFinanzas(private val baseDatos: BaseDatosPayRoutine) {
         val nombre = datos.nombre.trim()
         val vencimiento = Date.from(datos.vencimiento.atStartOfDay(ZoneId.systemDefault()).toInstant())
         val obligacionId = registrarObligacion(nombre, datos.categoriaId)
-        pagoPendienteDao.insertar(
+        val id = pagoPendienteDao.insertar(
             PagoPendiente(
                 descripcion = nombre,
-                monto = datos.monto.toDouble(),
+                monto = datos.monto,
                 fechaVencimiento = vencimiento,
                 esCuota = false,
                 pagado = false,
                 obligacionId = obligacionId,
             ),
         )
+        datos.recordatorio?.let { configurarAvisoPago(requireNotNull(usuarioDao.idActual()), id.toInt(), it) }
+        id
     }
 
     internal suspend fun registrarDeuda(datos: NuevaDeudaEnCuotas): Long = baseDatos.withTransaction {
@@ -181,7 +208,7 @@ class RepositorioFinanzas(private val baseDatos: BaseDatosPayRoutine) {
             val numero = indice + 1
             PagoPendiente(
                 descripcion = "$nombre · Cuota $numero de $cantidad",
-                monto = cuota.monto.toDouble(),
+                monto = cuota.monto,
                 fechaVencimiento = Date.from(cuota.vencimiento.atStartOfDay(zona).toInstant()),
                 esCuota = true,
                 cuotaActual = numero,
@@ -190,7 +217,9 @@ class RepositorioFinanzas(private val baseDatos: BaseDatosPayRoutine) {
                 obligacionId = obligacionId,
             )
         }
-        pagoPendienteDao.insertarTodas(vencimientos).first()
+        val id = pagoPendienteDao.insertarTodas(vencimientos).first()
+        datos.recordatorio?.let { configurarAvisoPago(requireNotNull(usuarioDao.idActual()), id.toInt(), it) }
+        id
     }
 
     private suspend fun registrarObligacion(nombre: String, categoriaId: Int): Int {
@@ -215,7 +244,7 @@ class RepositorioFinanzas(private val baseDatos: BaseDatosPayRoutine) {
             require(categoriaDao.buscarPorId(categoriaId)?.tipo == TipoMovimiento.Gasto) {
                 "La categoría de «${pago.descripcion}» ya no está disponible."
             }
-            require(pago.monto.isFinite() && pago.monto > 0) { "El monto de «${pago.descripcion}» debe ser positivo." }
+            require(pago.monto >= 0) { "El monto de «${pago.descripcion}» debe ser positivo." }
             val movimientoId = movimientoDao.insertar(
                 Movimiento(
                     nombre = pago.descripcion, tipo = TipoMovimiento.Gasto, monto = pago.monto,
@@ -252,12 +281,12 @@ class RepositorioFinanzas(private val baseDatos: BaseDatosPayRoutine) {
     internal suspend fun guardarPresupuestoMensual(
         usuarioId: String,
         mes: YearMonth,
-        limiteGeneral: Double?,
-        limites: Map<Int, Double>,
+        limiteGeneral: Long?,
+        limites: Map<Int, Long>,
     ) = baseDatos.withTransaction {
         check(usuarioDao.idActual() == usuarioId)
         require((limiteGeneral != null) xor limites.isNotEmpty())
-        require((limiteGeneral?.let(::listOf) ?: limites.values).all { it.isFinite() && it > 0 })
+        require((limiteGeneral?.let(::listOf) ?: limites.values).all { it > 0 })
         val categorias = categoriaDao.obtenerTodos().filter { it.tipo == TipoMovimiento.Gasto }.map { it.id }.toSet()
         require(categorias.containsAll(limites.keys))
         val anterior = mensualDao.obtener(mes.year, mes.monthValue)
@@ -307,31 +336,36 @@ class RepositorioFinanzas(private val baseDatos: BaseDatosPayRoutine) {
     private suspend fun generarDesde(mes: YearMonth, referencia: List<List<Movimiento>>) {
         if (referencia.isEmpty()) return
         val movimientos = referencia.flatten()
-        val limites = movimientos.filter { it.tipo == TipoMovimiento.Gasto }
-            .groupBy { it.categoriaId }.mapValues { (_, gastos) -> promedio(gastos, referencia.size) }
-            .filterValues { it > 0 }
+        val grupos = movimientos.filter { it.tipo == TipoMovimiento.Gasto }.groupBy { it.categoriaId }
+        val orden = grupos.keys.sortedWith(compareBy(nullsLast<Int>(naturalOrder())) { it })
+        val promedios = orden.map { id ->
+            grupos.getValue(id).sumOf { it.monto.toBigDecimal() }
+                .divide(referencia.size.toBigDecimal(), java.math.MathContext.DECIMAL128)
+        }
+        val limites = orden.zip(repartirPesos(promedios)).toMap().filterValues { it > 0 }
         if (limites.isEmpty()) return
         val ingresos = promedio(movimientos.filter { it.tipo == TipoMovimiento.Ingreso }, referencia.size)
         guardarPeriodo(mes, null, limites, ingresos, generado = true)
     }
 
-    private fun promedio(movimientos: List<Movimiento>, meses: Int): Double =
+    private fun promedio(movimientos: List<Movimiento>, meses: Int): Long =
         movimientos.sumOf { it.monto.toBigDecimal() }
-            .divide(meses.toBigDecimal(), 2, RoundingMode.HALF_UP).toDouble()
+            .divide(meses.toBigDecimal(), 0, RoundingMode.HALF_UP).longValueExact()
 
     private suspend fun guardarPeriodo(
         mes: YearMonth,
-        limiteGeneral: Double?,
-        limites: Map<Int, Double>,
-        ingresos: Double?,
+        limiteGeneral: Long?,
+        limites: Map<out Int?, Long>,
+        ingresos: Long?,
         generado: Boolean = false,
     ) {
         val modalidad = if (limiteGeneral == null) ModalidadPresupuesto.Categorias else ModalidadPresupuesto.General
+        val sinCategoria = if (limiteGeneral == null && !generado) presupuestoDao.sinCategoria(mes.year, mes.monthValue) else emptyList()
         mensualDao.guardar(PresupuestoMensual(mes.year, mes.monthValue, modalidad, limiteGeneral, generado, ingresos))
         presupuestoDao.eliminarPeriodo(mes.year, mes.monthValue)
         presupuestoDao.insertarTodos(limites.map { (id, monto) ->
             Presupuesto(categoriaId = id, montoPresupuestado = monto, mes = mes.monthValue, anio = mes.year)
-        })
+        } + sinCategoria)
     }
 
     suspend fun eliminarTodosLosDatos() = baseDatos.withTransaction {
@@ -342,6 +376,7 @@ class RepositorioFinanzas(private val baseDatos: BaseDatosPayRoutine) {
         mensualDao.eliminarTodos()
         categoriaDao.eliminarPersonalizadas()
         cargarCategoriasPredefinidas()
+        prepararConsejos()
         usuarioDao.eliminarTodos()
     }
 
@@ -378,7 +413,7 @@ class RepositorioFinanzas(private val baseDatos: BaseDatosPayRoutine) {
             id = anterior?.id ?: 0,
             nombre = datos.nombre.trim(),
             tipo = datos.tipo,
-            monto = datos.monto.toDouble(),
+            monto = datos.monto,
             fecha = fechaMovimiento(datos.fecha, anterior?.fecha),
             categoriaId = datos.categoriaId,
             nota = datos.nota.trim().takeIf { it.isNotEmpty() },

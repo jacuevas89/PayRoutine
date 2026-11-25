@@ -9,6 +9,8 @@ import androidx.room.TypeConverters
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 import cl.payroutine.datos.local.dao.CategoriaDao
+import cl.payroutine.datos.local.dao.AvisoEmitidoDao
+import cl.payroutine.datos.local.dao.ConsejoAhorroDao
 import cl.payroutine.datos.local.dao.MovimientoDao
 import cl.payroutine.datos.local.dao.ObligacionPagoDao
 import cl.payroutine.datos.local.dao.PagoPendienteDao
@@ -18,6 +20,8 @@ import cl.payroutine.datos.local.dao.RecordatorioMovimientoDao
 import cl.payroutine.datos.local.dao.RecordatorioPagoDao
 import cl.payroutine.datos.local.dao.UsuarioDao
 import cl.payroutine.datos.local.entidad.Categoria
+import cl.payroutine.datos.local.entidad.AvisoEmitido
+import cl.payroutine.datos.local.entidad.ConsejoAhorro
 import cl.payroutine.datos.local.entidad.Movimiento
 import cl.payroutine.datos.local.entidad.ObligacionPago
 import cl.payroutine.datos.local.entidad.PagoPendiente
@@ -26,7 +30,7 @@ import cl.payroutine.datos.local.entidad.PresupuestoMensual
 import cl.payroutine.datos.local.entidad.PreferenciasPresupuesto
 import cl.payroutine.datos.local.entidad.RecordatorioMovimiento
 import cl.payroutine.datos.local.entidad.RecordatorioPago
-import cl.payroutine.datos.local.entidad.PreferenciasAvisosPago
+import cl.payroutine.datos.local.entidad.ConfiguracionAvisoPago
 import cl.payroutine.datos.local.entidad.Usuario
 
 @Database(
@@ -34,9 +38,9 @@ import cl.payroutine.datos.local.entidad.Usuario
         Categoria::class, Movimiento::class, Presupuesto::class,
         PagoPendiente::class, Usuario::class, RecordatorioMovimiento::class,
         PresupuestoMensual::class, PreferenciasPresupuesto::class, ObligacionPago::class,
-        PreferenciasAvisosPago::class, RecordatorioPago::class,
+        ConfiguracionAvisoPago::class, RecordatorioPago::class, ConsejoAhorro::class, AvisoEmitido::class,
     ],
-    version = 9,
+    version = 10,
     autoMigrations = [
         AutoMigration(from = 1, to = 2),
         AutoMigration(from = 2, to = 3, spec = MigracionCategoriasPredefinidas::class),
@@ -48,6 +52,8 @@ import cl.payroutine.datos.local.entidad.Usuario
 @TypeConverters(ConvertidoresRoom::class)
 abstract class BaseDatosPayRoutine : RoomDatabase() {
     abstract fun categoriaDao(): CategoriaDao
+    abstract fun consejoAhorroDao(): ConsejoAhorroDao
+    abstract fun avisoEmitidoDao(): AvisoEmitidoDao
     abstract fun movimientoDao(): MovimientoDao
     abstract fun presupuestoDao(): PresupuestoDao
     abstract fun presupuestoMensualDao(): PresupuestoMensualDao
@@ -63,7 +69,7 @@ abstract class BaseDatosPayRoutine : RoomDatabase() {
                 contexto.applicationContext,
                 BaseDatosPayRoutine::class.java,
                 nombre,
-            ).addMigrations(MIGRACION_5_6, MIGRACION_6_7, MIGRACION_7_8).build()
+            ).addMigrations(MIGRACION_5_6, MIGRACION_6_7, MIGRACION_7_8, MIGRACION_9_10).build()
     }
 }
 

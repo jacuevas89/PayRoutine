@@ -39,7 +39,7 @@ import cl.payroutine.datos.local.entidad.TipoMovimiento
 import cl.payroutine.datos.local.entidad.RecordatorioMovimiento
 import cl.payroutine.datos.local.entidad.Usuario
 import cl.payroutine.datos.local.entidad.PreferenciasPresupuesto
-import cl.payroutine.datos.local.entidad.PreferenciasAvisosPago
+import cl.payroutine.datos.local.entidad.ConsejoAhorro
 import cl.payroutine.ui.pantallas.*
 import cl.payroutine.ui.theme.*
 import cl.payroutine.viewmodel.DatosInicio
@@ -75,6 +75,7 @@ private const val INFORMACION_PRIVACIDAD = "informacion-privacidad"
 private const val CATEGORIAS = "categorias"
 private const val CONSEJOS_AHORRO = "consejos-ahorro"
 private const val RECORDATORIOS = "recordatorios"
+private const val NOTIFICACIONES = "notificaciones"
 private const val CALENDARIO = "calendario"
 private const val HISTORIAL_PAGOS = "historial-pagos"
 private const val DETALLE_PAGO = "detalle-pago"
@@ -103,11 +104,13 @@ internal fun PayRoutineApp(
 ) {
     val estado by perfil.estado.collectAsState()
     val estadoCategorias by categorias.estado.collectAsState()
+    val consejos by finanzas.consejos.collectAsState()
     val perfilActivo = estado.usuario != null && !estado.errorCarga
     val inicio = if (perfilActivo) finanzas.inicio.collectAsState().value else null
     val estadoPagos = if (perfilActivo) finanzas.estadoPagos.collectAsState().value else EstadoPagos()
     NavegacionPayRoutine(
         estado = estado,
+        consejos = consejos,
         inicio = inicio,
         reintentarCarga = perfil::reintentarCarga,
         categorias = estadoCategorias,
@@ -135,6 +138,7 @@ internal fun NavegacionPayRoutine(
     estado: EstadoPerfil,
     inicio: DatosInicio?,
     reintentarCarga: () -> Unit,
+    consejos: List<ConsejoAhorro> = emptyList(),
     categorias: EstadoCategorias = EstadoCategorias(),
     reintentarCategorias: () -> Unit = {},
     prepararEdicion: () -> Unit = {},
@@ -188,7 +192,7 @@ internal fun NavegacionPayRoutine(
             }
         } else {
             NavegacionPrincipal(
-                usuario, inicio, estado.edicion, estado.borrado,
+                usuario, inicio, consejos, estado.edicion, estado.borrado,
                 prepararEdicion, guardarEdicion, eliminarDatos, limpiarErrorBorrado,
                 categorias, reintentarCategorias, crearCategoria, limpiarCreacionCategoria,
                 estadoPagos, reintentarPagos,
@@ -202,6 +206,7 @@ internal fun NavegacionPayRoutine(
 private fun NavegacionPrincipal(
     usuario: Usuario,
     inicio: DatosInicio?,
+    consejos: List<ConsejoAhorro>,
     edicion: EstadoEdicionPerfil,
     borrado: EstadoBorrado,
     prepararEdicion: () -> Unit,
@@ -228,6 +233,10 @@ private fun NavegacionPrincipal(
     val edicionActual by rememberUpdatedState(edicion)
     val borradoActual by rememberUpdatedState(borrado)
     val datosActuales by rememberUpdatedState(inicio)
+    val consejosActuales by rememberUpdatedState(consejos)
+    val historial = remember(recordatorios, usuario.id) { recordatorios?.historial(usuario.id) }
+        ?.collectAsState(initial = null)?.value
+    val historialActual by rememberUpdatedState(historial)
     val categoriasActuales by rememberUpdatedState(categorias)
     val pagosActuales by rememberUpdatedState(estadoPagos)
     val fechaPagos by rememberUpdatedState(inicio?.fecha ?: FechaLocal(LocalDate.now(), ZoneId.systemDefault()))
@@ -236,7 +245,8 @@ private fun NavegacionPrincipal(
     val presupuestosActuales by rememberUpdatedState(presupuestos)
     var periodoPresupuesto by rememberSaveable { mutableStateOf(YearMonth.now().toString()) }
     val rutaActual = entradaActual?.destination?.route ?: Seccion.Inicio.ruta
-    val seccionActual = Seccion.entries.firstOrNull { it.ruta == rutaActual }
+    val seccionActual = if (rutaActual == HISTORIAL_PAGOS) Seccion.Pagos
+        else Seccion.entries.firstOrNull { it.ruta == rutaActual }
     val fondoSuperior = if (seccionActual == Seccion.Inicio) AzulNoche else Color.White
 
     // Los destinos salientes pueden seguir visibles durante la transición.
@@ -251,6 +261,7 @@ private fun NavegacionPrincipal(
 
     fun irA(origen: NavBackStackEntry?, seccion: Seccion) {
         if (origen == null || navegador.currentBackStackEntry !== origen || origen.destination.route == seccion.ruta) return
+        if (origen.destination.route == HISTORIAL_PAGOS && seccion == Seccion.Pagos) return
         navegador.navigate(seccion.ruta) {
             popUpTo(Seccion.Inicio.ruta) {
                 saveState = true
@@ -290,7 +301,7 @@ private fun NavegacionPrincipal(
                 if (seccionActual != null) BarraInferior(seccionActual) { irA(entradaActual, it) }
             },
             floatingActionButton = {
-                val destino = when (seccionActual) {
+                val destino = when (Seccion.entries.firstOrNull { it.ruta == rutaActual }) {
                     Seccion.Inicio, Seccion.Movimientos -> NUEVO_MOVIMIENTO
                     Seccion.Pagos -> NUEVO_PAGO
                     else -> null
@@ -319,7 +330,8 @@ private fun NavegacionPrincipal(
                         verMovimientos = { irA(origen, Seccion.Movimientos) },
                         verPagos = { irA(origen, Seccion.Pagos) },
                         verPago = { abrir(origen, "$DETALLE_PAGO/$it") },
-                        verRecordatorios = { abrir(origen, RECORDATORIOS) },
+                        verNotificaciones = { abrir(origen, NOTIFICACIONES) },
+                        avisosNoLeidos = historialActual.orEmpty().count { !it.leido },
                         verAjustes = { abrir(origen, AJUSTES) },
                         verMovimiento = { abrir(origen, "$DETALLE_MOVIMIENTO/$it") },
                     )
@@ -525,30 +537,34 @@ private fun NavegacionPrincipal(
                         categoriasActuales, reintentarCategorias, crearCategoria, limpiarCreacionCategoria,
                     ) { volver(origen) }
                 }
-                composable(CONSEJOS_AHORRO) { origen -> PantallaConsejosAhorro { volver(origen) } }
+                composable(CONSEJOS_AHORRO) { origen -> PantallaConsejosAhorro(consejosActuales) { volver(origen) } }
+                composable(NOTIFICACIONES) { origen ->
+                    PantallaNotificaciones(
+                        historial = if (recordatorios == null) emptyList() else historialActual,
+                        marcarLeidos = { recordatorios?.marcarLeidos(usuario.id, it) },
+                        eliminar = { recordatorios?.eliminarAviso(usuario.id, it) },
+                        eliminarTodos = { recordatorios?.eliminarHistorial(usuario.id) },
+                    ) { volver(origen) }
+                }
                 composable(RECORDATORIOS) { origen ->
                     val configuraciones = remember(recordatorios, usuario.id) { recordatorios?.observar(usuario.id) }
                     val configuracion = configuraciones?.collectAsState(initial = null)?.value
                     val error = recordatorios?.error?.collectAsState()?.value ?: false
-                    val preferenciasPagos = remember(recordatorios, usuario.id) { recordatorios?.observarPreferenciasPagos(usuario.id) }
-                        ?.collectAsState(initial = null)?.value
-                    val seleccionPagos = remember(recordatorios) { recordatorios?.observarSeleccionPagos() }
-                        ?.collectAsState(initial = emptyList())?.value.orEmpty().toSet()
+                    val avisosPagos = remember(recordatorios, usuario.id) { recordatorios?.observarAvisosPagos(usuario.id) }
+                        ?.collectAsState(initial = emptyList())?.value.orEmpty()
                     PantallaRecordatorios(
                         configuracion = configuracion ?: RecordatorioMovimiento(usuario.id),
                         error = error,
                         notificacionesHabilitadas = { recordatorios?.notificacionesHabilitadas() ?: true },
                         alarmasExactasHabilitadas = { recordatorios?.alarmasExactasHabilitadas() ?: true },
                         canalSilenciado = { recordatorios?.canalSilenciado() ?: false },
+                        canalPagosSilenciado = { recordatorios?.canalPagosSilenciado() ?: false },
                         actualizar = { recordatorios?.actualizar(usuario.id, it) },
                         presupuesto = preferenciasActuales ?: PreferenciasPresupuesto(usuario.id),
                         actualizarPresupuesto = { recordatorios?.actualizarPresupuesto(usuario.id, it) },
-                        preferenciasPagos = preferenciasPagos ?: PreferenciasAvisosPago(usuario.id),
+                        avisosPagos = avisosPagos,
                         pagos = pagosActuales,
-                        fechaPagos = fechaPagos,
-                        seleccionPagos = seleccionPagos,
-                        actualizarPagos = { recordatorios?.actualizarPagos(usuario.id, it) },
-                        seleccionarPagos = { ids, seleccionar -> recordatorios?.seleccionarPagos(usuario.id, ids, seleccionar) },
+                        configurarPago = { id, opciones -> recordatorios?.configurarPago(usuario.id, id, opciones) },
                         notificacionesPagosHabilitadas = { recordatorios?.notificacionesPagosHabilitadas() ?: true },
                     ) { volver(origen) }
                 }

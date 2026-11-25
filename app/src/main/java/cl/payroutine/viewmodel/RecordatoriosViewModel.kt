@@ -8,23 +8,30 @@ import androidx.lifecycle.viewModelScope
 import cl.payroutine.PayRoutineApplication
 import cl.payroutine.datos.local.entidad.RecordatorioMovimiento
 import cl.payroutine.datos.local.entidad.PreferenciasPresupuesto
-import cl.payroutine.datos.local.entidad.PreferenciasAvisosPago
+import cl.payroutine.datos.local.entidad.OpcionesAvisoPago
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
 internal class RecordatoriosViewModel(aplicacion: Application) : AndroidViewModel(aplicacion) {
-    private val recordatorios = (aplicacion as PayRoutineApplication).recordatorios
+    private val app = aplicacion as PayRoutineApplication
+    private val recordatorios = app.recordatorios
+    private val repositorio = app.repositorio
     private val errorInterno = MutableStateFlow(false)
     val error = errorInterno.asStateFlow()
 
     fun observar(usuarioId: String) = recordatorios.observar(usuarioId)
-    fun observarPreferenciasPagos(usuarioId: String) = recordatorios.observarPreferenciasPagos(usuarioId)
-    fun observarSeleccionPagos() = recordatorios.observarSeleccionPagos()
+    fun observarAvisosPagos(usuarioId: String): kotlinx.coroutines.flow.Flow<List<cl.payroutine.datos.local.dao.ConfiguracionConProgramacion>> =
+        recordatorios.observarConfiguracionesPagos(usuarioId)
+    fun historial(usuarioId: String) = repositorio.observarHistorialAvisos(usuarioId)
+    fun marcarLeidos(usuarioId: String, ids: List<String>) = ejecutar { repositorio.marcarAvisosLeidos(usuarioId, ids) }
+    fun eliminarAviso(usuarioId: String, id: String) = ejecutar { repositorio.eliminarAviso(usuarioId, id) }
+    fun eliminarHistorial(usuarioId: String) = ejecutar { repositorio.eliminarHistorialAvisos(usuarioId) }
     fun notificacionesHabilitadas() = recordatorios.notificacionesHabilitadas()
     fun notificacionesPagosHabilitadas() = recordatorios.notificacionesPagosHabilitadas()
     fun alarmasExactasHabilitadas() = recordatorios.alarmasExactasHabilitadas()
     fun canalSilenciado() = recordatorios.canalSilenciado()
+    fun canalPagosSilenciado() = recordatorios.canalSilenciado(cl.payroutine.recordatorios.CANAL_PAGOS)
 
     fun restaurar() = ejecutar { recordatorios.restaurar(siFalta = true) }
 
@@ -34,11 +41,8 @@ internal class RecordatoriosViewModel(aplicacion: Application) : AndroidViewMode
     fun actualizarPresupuesto(usuarioId: String, cambiar: (PreferenciasPresupuesto) -> PreferenciasPresupuesto) =
         ejecutar { recordatorios.actualizarAvisoPresupuesto(usuarioId, cambiar) }
 
-    fun actualizarPagos(usuarioId: String, cambiar: (PreferenciasAvisosPago) -> PreferenciasAvisosPago) =
-        ejecutar { recordatorios.actualizarPreferenciasPagos(usuarioId, cambiar) }
-
-    fun seleccionarPagos(usuarioId: String, vencimientos: List<Int>, seleccionar: Boolean) =
-        ejecutar { recordatorios.seleccionarPagos(usuarioId, vencimientos, seleccionar) }
+    fun configurarPago(usuarioId: String, pagoId: Int, opciones: OpcionesAvisoPago?) =
+        ejecutar { recordatorios.configurarPago(usuarioId, pagoId, opciones) }
 
     private fun ejecutar(operacion: suspend () -> Unit) {
         viewModelScope.launch {

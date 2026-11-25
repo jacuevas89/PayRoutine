@@ -93,19 +93,20 @@ internal fun PantallaCalendario(
                     if (pendientes.isNotEmpty()) Destacado("Vencimientos pendientes")
                     pendientes.forEach { fila ->
                         FilaTarjeta(
-                            fila.pago.descripcion, fila.nombreCategoria.orEmpty(), montoEnPantalla(fila.pago.monto),
+                            fila.pago.descripcion, fila.nombreCategoria ?: "Sin categoría", montoEnPantalla(fila.pago.monto),
                             "calendar", AzulNoche, FondoSelector,
                         ) { verPago(fila.pago.id) }
                     }
                     if (pagosDelDia.isNotEmpty()) Destacado("Pagos realizados este día")
                     pagosDelDia.forEach { realizado ->
                         val vencimiento = realizado.fila.diaVencimiento(fecha)
-                        val detalle = if (vencimiento == dia) realizado.fila.nombreCategoria.orEmpty()
+                        val detalle = if (vencimiento == dia) realizado.fila.nombreCategoria ?: "Sin categoría"
                             else "Vencía el ${fechaEnPantalla(vencimiento)}"
                         FilaTarjeta(
                             realizado.fila.pago.descripcion, detalle, montoEnPantalla(realizado.fila.pago.monto),
                             "check", VerdeIngreso, FondoIngreso,
                         ) { verGasto(realizado.movimientoId) }
+                        if (vencimiento != dia && realizado.fila.nombreCategoria == null) Etiqueta("Sin categoría")
                     }
                     if (vencimientosPagados.isNotEmpty()) {
                         Pildora(

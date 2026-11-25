@@ -13,9 +13,9 @@ data class PresupuestoMensual(
     val anio: Int,
     val mes: Int,
     val modalidad: ModalidadPresupuesto,
-    val limiteGeneral: Double? = null,
+    val limiteGeneral: Long? = null,
     val generado: Boolean = false,
-    val ingresoReferencia: Double? = null,
+    val ingresoReferencia: Long? = null,
 )
 
 @Entity(foreignKeys = [

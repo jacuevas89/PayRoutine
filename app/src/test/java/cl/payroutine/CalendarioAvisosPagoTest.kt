@@ -1,7 +1,7 @@
 package cl.payroutine
 
 import cl.payroutine.datos.local.entidad.FrecuenciaAvisoPago
-import cl.payroutine.datos.local.entidad.PreferenciasAvisosPago
+import cl.payroutine.datos.local.entidad.OpcionesAvisoPago
 import cl.payroutine.datos.local.entidad.RecordatorioPago
 import cl.payroutine.datos.local.entidad.proximoAviso
 import java.time.LocalDate
@@ -13,7 +13,7 @@ import org.junit.Test
 class CalendarioAvisosPagoTest {
     private val zona = ZoneId.of("America/Santiago")
     private val vencimiento = LocalDate.of(2026, 12, 2)
-    private val base = PreferenciasAvisosPago("perfil", activo = true, anticipacion = 3)
+    private val base = OpcionesAvisoPago(anticipacion = 3)
 
     @Test
     fun respetaAnticipacionYPosponeHastaMananaSiLaHoraPaso() {

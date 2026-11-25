@@ -12,6 +12,7 @@ import android.database.sqlite.SQLiteException
 import android.media.AudioAttributes
 import android.os.Build
 import android.provider.Settings
+import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
@@ -19,7 +20,8 @@ import cl.payroutine.MainActivity
 import cl.payroutine.R
 import cl.payroutine.datos.local.entidad.RecordatorioMovimiento
 import cl.payroutine.datos.local.entidad.PreferenciasPresupuesto
-import cl.payroutine.datos.local.entidad.PreferenciasAvisosPago
+import cl.payroutine.datos.local.entidad.OpcionesAvisoPago
+import cl.payroutine.datos.local.entidad.AvisoEmitido
 import cl.payroutine.datos.local.entidad.PagoPendiente
 import cl.payroutine.datos.local.entidad.fechaAviso
 import cl.payroutine.datos.local.entidad.indice
@@ -62,13 +64,13 @@ internal class RecordatoriosMovimientos(
     private val mutex = Mutex()
 
     fun observar(usuarioId: String) = repositorio.observarRecordatorio(usuarioId)
-    fun observarPreferenciasPagos(usuarioId: String) = repositorio.observarPreferenciasAvisosPago(usuarioId)
-    fun observarSeleccionPagos() = repositorio.observarSeleccionAvisosPago()
+    fun observarConfiguracionesPagos(usuarioId: String): kotlinx.coroutines.flow.Flow<List<cl.payroutine.datos.local.dao.ConfiguracionConProgramacion>> =
+        repositorio.observarConfiguracionesAvisosPago(usuarioId)
 
     fun alarmasExactasHabilitadas(): Boolean =
         Build.VERSION.SDK_INT < Build.VERSION_CODES.S || alarmas.canScheduleExactAlarms()
 
-    fun canalSilenciado(): Boolean = notificaciones.getNotificationChannel(CANAL_MOVIMIENTOS)
+    fun canalSilenciado(canal: String = CANAL_MOVIMIENTOS): Boolean = notificaciones.getNotificationChannel(canal)
         ?.let { it.importance < NotificationManager.IMPORTANCE_DEFAULT || it.sound == null } ?: false
 
     fun notificacionesHabilitadas(): Boolean = notificacionesHabilitadas(CANAL_MOVIMIENTOS)
@@ -107,17 +109,11 @@ internal class RecordatoriosMovimientos(
         prepararAvisosPagos(ahora, conservarHora = siFalta && alarmaExistente(AVISO_PAGOS, ID_ALARMA_PAGOS) != null)
     }
 
-    suspend fun actualizarPreferenciasPagos(usuarioId: String, cambiar: (PreferenciasAvisosPago) -> PreferenciasAvisosPago) =
+    suspend fun configurarPago(usuarioId: String, pagoId: Int, opciones: OpcionesAvisoPago?) =
         mutex.withLock {
-            repositorio.guardarPreferenciasAvisosPago(usuarioId, cambiar)
+            repositorio.guardarConfiguracionAvisoPago(usuarioId, pagoId, opciones)
             prepararAvisosPagos(ZonedDateTime.now())
         }
-
-    suspend fun seleccionarPagos(usuarioId: String, ids: List<Int>, seleccionar: Boolean) = mutex.withLock {
-        repositorio.seleccionarAvisosPago(usuarioId, ids, seleccionar)
-        val conservar = alarmaExistente(AVISO_PAGOS, ID_ALARMA_PAGOS) != null
-        prepararAvisosPagos(ZonedDateTime.now(), conservarHora = conservar)
-    }
 
     suspend fun restaurarPagos() = mutex.withLock {
         val conservar = alarmaExistente(AVISO_PAGOS, ID_ALARMA_PAGOS) != null
@@ -125,7 +121,9 @@ internal class RecordatoriosMovimientos(
     }
 
     suspend fun recibirAvisosPagos(instante: Long, ahora: ZonedDateTime = ZonedDateTime.now()) = mutex.withLock {
-        if (ahora.toInstant().toEpochMilli() >= instante) prepararAvisosPagos(ahora, entregar = notificacionesPagosHabilitadas())
+        if (instante == Long.MAX_VALUE) return@withLock
+        Log.i("Recordatorios", "Android ejecutó la alarma de pagos prevista para $instante")
+        prepararAvisosPagos(ahora, entregar = ahora.toInstant().toEpochMilli() >= instante)
     }
 
     private suspend fun prepararAvisosPagos(
@@ -133,7 +131,7 @@ internal class RecordatoriosMovimientos(
         entregar: Boolean = false,
         conservarHora: Boolean = false,
     ) {
-        val plan = repositorio.planificarAvisosPago(ahora, entregar, conservarHora)
+        val plan = repositorio.planificarAvisosPago(ahora, entregar, conservarHora, notificacionesPagosHabilitadas())
         val pendientes = plan.pendientes.associateBy { it.id }
         notificaciones.activeNotifications.filter { it.tag == CANAL_PAGOS }.forEach { aviso ->
             val pago = pendientes[aviso.id]
@@ -146,12 +144,13 @@ internal class RecordatoriosMovimientos(
         else {
             val intent = intencionAlarma(AVISO_PAGOS).putExtra(EXTRA_DIA, siguiente.toInstant().toEpochMilli())
             agendar(generarAlarma(AVISO_PAGOS, ID_ALARMA_PAGOS, intent), siguiente)
+            Log.i("Recordatorios", "Alarma de pagos programada para $siguiente; hora exacta: ${alarmasExactasHabilitadas()}")
         }
         val usuarioId = plan.usuarioId ?: return
         plan.entregar.forEach { pago ->
             publicar(
                 usuarioId, pago.id, CANAL_PAGOS, "Vencimientos de pagos",
-                ABRIR_PAGO, pago.descripcion, textoPago(pago, ahora), pago.id,
+                ABRIR_PAGO, pago.descripcion, textoPago(pago, ahora), pago.id, ahora,
             )
         }
     }
@@ -178,8 +177,7 @@ internal class RecordatoriosMovimientos(
             preferencias.ultimoMesAvisado != mes.indice() &&
             preferencias.fechaAviso(mes, ahora).toLocalDate().toEpochDay() == dia &&
             !ahora.isBefore(preferencias.fechaAviso(mes, ahora)) &&
-            !repositorio.existePresupuesto(mes) &&
-            notificacionesHabilitadas(CANAL_PRESUPUESTO)
+            !repositorio.existePresupuesto(mes)
         ) {
             publicar(
                 preferencias.usuarioId, ID_AVISO_PRESUPUESTO, CANAL_PRESUPUESTO, "Presupuesto mensual",
@@ -223,8 +221,7 @@ internal class RecordatoriosMovimientos(
         val diaActual = hoy.toEpochDay()
         if (dia in (diaActual - 1)..diaActual &&
             (configuracion.ultimoAviso == null || configuracion.ultimoAviso < diaActual) &&
-            !ahora.isBefore(LocalDate.ofEpochDay(dia).atTime(configuracion.hora).atZone(ahora.zone)) &&
-            notificacionesHabilitadas()
+            !ahora.isBefore(LocalDate.ofEpochDay(dia).atTime(configuracion.hora).atZone(ahora.zone))
         ) {
             val actualizado = configuracion.copy(ultimoAviso = diaActual)
             try {
@@ -300,7 +297,7 @@ internal class RecordatoriosMovimientos(
         }
     }
 
-    private fun publicar(
+    private suspend fun publicar(
         usuarioId: String,
         id: Int = ID_AVISO,
         canal: String = CANAL_MOVIMIENTOS,
@@ -309,6 +306,26 @@ internal class RecordatoriosMovimientos(
         titulo: String = "Registra tus movimientos",
         mensaje: String = "Toca para anotar un gasto o un ingreso en PayRoutine.",
         vencimientoId: Int? = null,
+        ahora: ZonedDateTime = ZonedDateTime.now(),
+    ) {
+        val permitido = notificacionesHabilitadas(canal)
+        val mostrado = if (permitido) try {
+            mostrarEnAndroid(usuarioId, id, canal, nombreCanal, destino, titulo, mensaje, vencimientoId)
+            true
+        } catch (error: SecurityException) {
+            Log.w("Recordatorios", "Android impidió publicar el aviso", error)
+            false
+        } else false
+        repositorio.guardarAviso(AvisoEmitido(
+            "$usuarioId:$destino:$id:${ahora.toLocalDate().toEpochDay()}",
+            usuarioId, titulo, mensaje, ahora.toInstant().toEpochMilli(), mostrado,
+        ))
+        Log.i("Recordatorios", if (mostrado) "Aviso publicado en Android" else "Aviso registrado con publicación bloqueada")
+    }
+
+    private fun mostrarEnAndroid(
+        usuarioId: String, id: Int, canal: String, nombreCanal: String, destino: String,
+        titulo: String, mensaje: String, vencimientoId: Int?,
     ) {
         notificaciones.createNotificationChannel(
             NotificationChannel(canal, nombreCanal, NotificationManager.IMPORTANCE_DEFAULT).apply {
@@ -327,9 +344,10 @@ internal class RecordatoriosMovimientos(
             contexto, id, intent, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_CANCEL_CURRENT,
         )
         val notificacion = NotificationCompat.Builder(contexto, canal)
-            .setSmallIcon(R.drawable.icono_bell)
+            .setSmallIcon(R.drawable.icono_notificacion_payroutine)
             .setContentTitle(titulo)
             .setContentText(mensaje)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(mensaje))
             .setContentIntent(abrir)
             .setAutoCancel(true)
             .build()

@@ -33,8 +33,8 @@ interface MovimientoDao {
     suspend fun obtenerEntre(desde: Long, hasta: Long): List<Movimiento>
 
     @Query("""
-        SELECT Movimiento.*, Categoria.nombre AS categoria, PagoPendiente.id AS pagoId
-        FROM Movimiento INNER JOIN Categoria ON Categoria.id = Movimiento.categoria_id
+        SELECT Movimiento.*, COALESCE(Categoria.nombre, 'Sin categoría') AS categoria, PagoPendiente.id AS pagoId
+        FROM Movimiento LEFT JOIN Categoria ON Categoria.id = Movimiento.categoria_id
         LEFT JOIN PagoPendiente ON PagoPendiente.movimiento_id = Movimiento.id
         ORDER BY Movimiento.fecha DESC, Movimiento.id DESC
     """)

@@ -11,6 +11,7 @@ import androidx.test.filters.SdkSuppress
 import androidx.test.platform.app.InstrumentationRegistry
 import cl.payroutine.datos.local.BaseDatosPayRoutine
 import cl.payroutine.datos.local.entidad.FrecuenciaAvisoPago
+import cl.payroutine.datos.local.entidad.AvisoEmitido
 import cl.payroutine.datos.local.entidad.TipoMovimiento
 import cl.payroutine.datos.repositorio.CuotaProgramada
 import cl.payroutine.datos.repositorio.NuevaDeudaEnCuotas
@@ -54,9 +55,9 @@ class AvisosPagosTest {
             repo.registrarDeuda(NuevaDeudaEnCuotas("Crédito", 3000, categoria.id, 0,
                 listOf(CuotaProgramada(hoy, 1000), CuotaProgramada(hoy.plusDays(1), 2000))))
             val (primera, segunda) = repo.observarPagos().first()
-            servicio.seleccionarPagos(usuario, listOf(primera.id, segunda.id), true)
+            servicio.configurarPago(usuario, primera.id, null)
             assertNull(PendingIntent.getBroadcast(contexto, 94, intencion, flags))
-            repo.guardarPreferenciasAvisosPago(usuario) { it.copy(activo = true, frecuencia = FrecuenciaAvisoPago.CadaTresDias) }
+            repo.guardarConfiguracionAvisoPago(usuario, primera.id, cl.payroutine.datos.local.entidad.OpcionesAvisoPago(frecuencia = FrecuenciaAvisoPago.CadaTresDias))
             assertEquals(aviso, repo.planificarAvisosPago(antes, false, false).siguiente)
             val recibido = aviso.toInstant().toEpochMilli()
             servicio.recibirAvisosPagos(recibido, aviso)
@@ -70,6 +71,19 @@ class AvisosPagosTest {
             assertTrue(notificacion.notification.extras.getString(Notification.EXTRA_TEXT).orEmpty().contains("Vence el"))
             assertNotNull(notificacion.notification.contentIntent)
             assertEquals(aviso.plusDays(1), repo.planificarAvisosPago(aviso, false, false).siguiente)
+            val emitido = repo.observarHistorialAvisos(usuario).first().single()
+            assertTrue(emitido.mostradoEnAndroid)
+            assertFalse(emitido.leido)
+            repo.guardarAviso(AvisoEmitido("bloqueado", usuario, "Prueba", "Android bloqueó el aviso", emitido.fecha + 1, false))
+            repo.marcarAvisosLeidos(usuario, listOf(emitido.id))
+            val historial = repo.observarHistorialAvisos(usuario).first()
+            assertFalse(historial.first().leido)
+            assertFalse(historial.first().mostradoEnAndroid)
+            assertTrue(historial.last().leido)
+            repo.eliminarAviso(usuario, emitido.id)
+            repo.eliminarHistorialAvisos(usuario)
+            assertTrue(repo.observarHistorialAvisos(usuario).first().isEmpty())
+            assertNotNull(PendingIntent.getBroadcast(contexto, 94, intencion, flags))
 
             repo.pagarVencimientos(listOf(primera.id), hoy, "")
             servicio.restaurarPagos()
@@ -81,13 +95,13 @@ class AvisosPagosTest {
             val restaurado = repo.planificarAvisosPago(aviso.plusMinutes(5), false, false)
             assertTrue(restaurado.pendientes.any { it.id == primera.id })
             assertEquals(aviso.plusDays(1), restaurado.siguiente)
-            servicio.seleccionarPagos(usuario, listOf(primera.id), false)
-            assertEquals(listOf(segunda.id), repo.observarSeleccionAvisosPago().first())
+            servicio.configurarPago(usuario, primera.id, null)
+            assertTrue(repo.observarConfiguracionesAvisosPago(usuario).first().isEmpty())
             repo.eliminar(segunda)
             servicio.restaurarPagos()
             assertNull(PendingIntent.getBroadcast(contexto, 94, intencion, flags))
             servicio.eliminarDatosLocales()
-            assertNull(repo.observarPreferenciasAvisosPago(usuario).first())
+            assertTrue(repo.observarConfiguracionesAvisosPago(usuario).first().isEmpty())
         } finally {
             servicio.eliminarDatosLocales()
             base.close()

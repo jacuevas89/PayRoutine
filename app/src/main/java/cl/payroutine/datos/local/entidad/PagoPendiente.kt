@@ -18,7 +18,7 @@ import java.util.Date
 data class PagoPendiente(
     @PrimaryKey(autoGenerate = true) val id: Int = 0,
     val descripcion: String,
-    val monto: Double,
+    val monto: Long,
     @ColumnInfo(name = "fecha_vencimiento") val fechaVencimiento: Date,
     @ColumnInfo(name = "es_cuota") val esCuota: Boolean,
     @ColumnInfo(name = "cuota_actual") val cuotaActual: Int? = null,

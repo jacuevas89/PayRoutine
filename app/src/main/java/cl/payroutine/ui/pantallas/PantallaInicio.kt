@@ -68,7 +68,8 @@ internal fun PantallaInicio(
     verMovimientos: () -> Unit,
     verPagos: () -> Unit,
     verPago: (Int) -> Unit,
-    verRecordatorios: () -> Unit,
+    verNotificaciones: () -> Unit,
+    avisosNoLeidos: Int,
     verAjustes: () -> Unit,
     verMovimiento: (Int) -> Unit,
 ) {
@@ -86,7 +87,16 @@ internal fun PantallaInicio(
                     Text("Hola, $apodo", color = Color.White, fontSize = 18.5.sp, lineHeight = 24.sp, fontWeight = FontWeight.Bold)
                     if (datos != null) Etiqueta(mesEnPantalla(datos.fecha.hoy), TextoSobreAzul)
                 }
-                BotonIcono("bell", "Recordatorios", verRecordatorios, circular = true)
+                Box {
+                    BotonIcono("bell", if (avisosNoLeidos == 0) "Notificaciones" else "Notificaciones · $avisosNoLeidos sin leer",
+                        verNotificaciones, circular = true)
+                    if (avisosNoLeidos > 0) Box(
+                        Modifier.align(Alignment.TopEnd).sizeIn(minWidth = 20.dp, minHeight = 20.dp)
+                            .background(RojoGasto, androidx.compose.foundation.shape.CircleShape)
+                            .padding(horizontal = 4.dp),
+                        contentAlignment = Alignment.Center,
+                    ) { Text(avisosNoLeidos.toString(), color = Color.White, fontSize = 11.sp) }
+                }
                 BotonIcono("settings", "Ajustes", verAjustes, circular = true, color = AzulNoche)
             }
             Tarjeta(Modifier.fillMaxWidth(), espacio = 10) {

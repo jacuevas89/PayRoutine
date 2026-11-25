@@ -21,6 +21,9 @@ import cl.payroutine.viewmodel.OperacionPresupuesto
 import cl.payroutine.viewmodel.PresupuestoDelMes
 import cl.payroutine.viewmodel.sumarImportes
 import cl.payroutine.viewmodel.movimientosDelMes
+import cl.payroutine.datos.repositorio.validarMontoMovimiento
+import java.math.BigDecimal
+import java.math.MathContext
 import java.time.YearMonth
 import java.time.ZoneId
 
@@ -66,11 +69,13 @@ internal fun PantallaPresupuesto(
                 else -> {
                     val general = presupuesto.datos.modalidad == ModalidadPresupuesto.General
                     val (conLimite, sinLimite) = gastos.partition {
-                        general || it.movimiento.categoriaId in presupuesto.limites
+                        general || it.movimiento.categoriaId in presupuesto.limites ||
+                            (it.movimiento.categoriaId == null && presupuesto.sinCategoria.signum() > 0)
                     }
                     val gastado = conLimite.totalGastado()
                     Tarjeta(Modifier.fillMaxWidth()) {
-                        Destacado(if (general) "Presupuesto general" else "Presupuesto por categorías")
+                        Destacado(if (general) "Presupuesto general" else "Presupuesto total mensual")
+                        if (!general) Etiqueta("Presupuesto por categorías")
                         if (presupuesto.datos.generado) Etiqueta("Generado automáticamente")
                         ResumenLimite(gastado, presupuesto.total)
                         AdvertirIngresos(presupuesto.total, presupuesto.datos.ingresoReferencia)
@@ -81,9 +86,13 @@ internal fun PantallaPresupuesto(
                         val consumo = porCategoria[categoria.id].orEmpty().totalGastado()
                         Tarjeta(Modifier.fillMaxWidth()) {
                             Destacado(categoria.nombre)
-                            ResumenLimite(consumo, limite)
-                            if (consumo > limite) Enlace("Ver exceso") { verExcedido(categoria.id) }
+                            ResumenLimite(consumo, limite.toBigDecimal())
+                            if (consumo > limite.toBigDecimal()) Enlace("Ver exceso") { verExcedido(categoria.id) }
                         }
+                    }
+                    if (!general && presupuesto.sinCategoria.signum() > 0) Tarjeta(Modifier.fillMaxWidth()) {
+                        Destacado("Sin categoría")
+                        ResumenLimite(porCategoria[null].orEmpty().totalGastado(), presupuesto.sinCategoria)
                     }
                     if (sinLimite.isNotEmpty()) Tarjeta(Modifier.fillMaxWidth()) {
                         Destacado("Gastos sin presupuesto")
@@ -113,7 +122,7 @@ internal fun PantallaPresupuesto(
 internal fun PantallaPresupuestoExcedido(
     mes: YearMonth,
     nombre: String,
-    limite: Double?,
+    limite: Long?,
     gastos: List<MovimientoConCategoria>,
     zona: ZoneId,
     volver: () -> Unit,
@@ -125,8 +134,8 @@ internal fun PantallaPresupuestoExcedido(
         Cuerpo(Modifier.weight(1f)) {
             Etiqueta(mesEnPantalla(mes.atDay(1)))
             if (limite != null) Tarjeta(Modifier.fillMaxWidth()) {
-                Destacado(if (total > limite) "Superaste tu presupuesto" else "Consumo del presupuesto")
-                ResumenLimite(total, limite)
+                Destacado(if (total > limite.toBigDecimal()) "Superaste tu presupuesto" else "Consumo del presupuesto")
+                ResumenLimite(total, limite.toBigDecimal())
             }
             if (gastos.isEmpty()) Etiqueta("No hay gastos en este período.")
             gastos.forEach { gasto ->
@@ -140,12 +149,12 @@ internal fun PantallaPresupuestoExcedido(
 }
 
 @Composable
-private fun ResumenLimite(gastado: Double, limite: Double) {
-    val proporcion = if (limite > 0) gastado / limite else 0.0
+private fun ResumenLimite(gastado: BigDecimal, limite: BigDecimal) {
+    val proporcion = if (limite.signum() > 0) gastado.divide(limite, MathContext.DECIMAL64) else BigDecimal.ZERO
     val color = if (gastado > limite) RojoGasto else VerdeMarca
-    val diferencia = (limite.toBigDecimal() - gastado.toBigDecimal()).abs()
+    val diferencia = (limite - gastado).abs()
     Cifra("${montoEnPantalla(gastado)} de ${montoEnPantalla(limite)}", tamano = 21)
-    Progreso((proporcion * 100).toInt(), color)
+    Progreso((proporcion * 100.toBigDecimal()).min(100.toBigDecimal()).toInt(), color)
     val porcentaje = porcentajeEnPantalla(proporcion)
     val limiteExacto = porcentajeEnPantalla(1)
     Etiqueta(when {
@@ -153,7 +162,7 @@ private fun ResumenLimite(gastado: Double, limite: Double) {
         porcentaje == limiteExacto && gastado < limite -> "Menos de $limiteExacto usado"
         else -> "$porcentaje usado"
     }, color)
-    Etiqueta("Disponible: ${montoEnPantalla(if (gastado > limite) 0 else diferencia)}", color)
+    Etiqueta("Disponible presupuesto ${montoEnPantalla(if (gastado > limite) BigDecimal.ZERO else diferencia)}", color)
     if (gastado > limite) Etiqueta("Excedido por ${montoEnPantalla(diferencia)}", RojoGasto)
 }
 
@@ -166,7 +175,7 @@ internal fun PantallaConfigurarPresupuesto(
     hayMovimientosAnteriores: Boolean,
     estado: OperacionPresupuesto,
     elegirPeriodo: (YearMonth) -> Unit,
-    guardar: (Double?, Map<Int, Double>) -> Unit,
+    guardar: (Long?, Map<Int, Long>) -> Unit,
     automatico: (Boolean) -> Unit,
     omitir: () -> Unit,
 ) {
@@ -264,7 +273,7 @@ internal fun PantallaEditarPresupuesto(
     gastos: List<MovimientoConCategoria>,
     estado: OperacionPresupuesto,
     volver: () -> Unit,
-    guardar: (Double?, Map<Int, Double>) -> Unit,
+    guardar: (Long?, Map<Int, Long>) -> Unit,
     copiado: Boolean = false,
 ) {
     var modalidad by rememberSaveable { mutableStateOf(modalidadInicial ?: origen?.datos?.modalidad ?: ModalidadPresupuesto.General) }
@@ -272,7 +281,7 @@ internal fun PantallaEditarPresupuesto(
     var limites by rememberSaveable {
         mutableStateOf(HashMap(origen?.limites.orEmpty().mapValues { (_, monto) -> monto.comoEntrada() }))
     }
-    var distribuir by rememberSaveable { mutableStateOf<Double?>(null) }
+    var distribuir by rememberSaveable { mutableStateOf<Long?>(null) }
     val suma = limites.values.mapNotNull(::leerLimite).sumarImportes()
     val general = modalidad == ModalidadPresupuesto.General
     val montos = categorias.mapNotNull { categoria ->
@@ -283,7 +292,7 @@ internal fun PantallaEditarPresupuesto(
         val texto = limites[it.id].orEmpty()
         texto.isNotBlank() && leerLimite(texto) == null
     }
-    val total = if (general) leerLimite(importe) ?: 0.0 else montos.values.sumarImportes()
+    val total = if (general) leerLimite(importe)?.toBigDecimal() ?: BigDecimal.ZERO else montos.values.sumarImportes()
     val porCategoria = gastos.groupBy { it.movimiento.categoriaId }
 
     BackHandler(enabled = guardando) {}
@@ -295,7 +304,7 @@ internal fun PantallaEditarPresupuesto(
             Segmentos(listOf("General", "Por categorías"), if (general) 0 else 1) { indice ->
                 if (guardando || (indice == 0) == general) return@Segmentos
                 if (indice == 0) {
-                    importe = suma.takeIf { it > 0 }?.comoEntrada() ?: ""
+                    importe = suma.takeIf { it.signum() > 0 }?.toPlainString() ?: ""
                     modalidad = ModalidadPresupuesto.General
                 } else {
                     distribuir = leerLimite(importe)
@@ -326,10 +335,10 @@ internal fun PantallaEditarPresupuesto(
 }
 
 @Composable
-private fun CampoLimite(nombre: String, texto: String, gastado: Double, habilitado: Boolean, cambiar: (String) -> Unit) {
+private fun CampoLimite(nombre: String, texto: String, gastado: BigDecimal, habilitado: Boolean, cambiar: (String) -> Unit) {
     val monto = leerLimite(texto)
     val invalido = texto.isNotBlank() && monto == null
-    OutlinedTextField(
+    CampoMonto(
         value = texto,
         onValueChange = cambiar,
         modifier = Modifier.fillMaxWidth(),
@@ -338,11 +347,11 @@ private fun CampoLimite(nombre: String, texto: String, gastado: Double, habilita
         singleLine = true,
         isError = invalido,
         enabled = habilitado,
-        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
         supportingText = {
-            val menor = monto != null && monto < gastado
+            val menor = monto != null && monto.toBigDecimal() < gastado
             Etiqueta(when {
-                invalido -> "Ingresa un importe positivo con hasta dos decimales."
+                invalido -> "Ingresa un importe positivo en pesos enteros."
                 menor -> "El límite está por debajo de lo gastado: ${montoEnPantalla(gastado)}."
                 else -> "Gastado: ${montoEnPantalla(gastado)}"
             }, if (menor || invalido) RojoGasto else TextoSecundario)
@@ -351,8 +360,8 @@ private fun CampoLimite(nombre: String, texto: String, gastado: Double, habilita
 }
 
 @Composable
-private fun AdvertirIngresos(limite: Double, ingresos: Double?) {
-    if (ingresos != null && limite > ingresos) {
+private fun AdvertirIngresos(limite: BigDecimal, ingresos: Long?) {
+    if (ingresos != null && limite > ingresos.toBigDecimal()) {
         Etiqueta("El presupuesto supera los ingresos de referencia (${montoEnPantalla(ingresos)}).", RojoGasto)
     }
 }
@@ -362,10 +371,8 @@ internal fun ErrorPresupuesto(estado: OperacionPresupuesto) {
     if (estado == OperacionPresupuesto.Error) Etiqueta("No se pudo guardar. Vuelve a intentarlo.", RojoGasto)
 }
 
-private val formatoImporte = Regex("[0-9]{1,15}([.,][0-9]{1,2})?")
-private fun leerLimite(texto: String): Double? = texto.trim().takeIf(formatoImporte::matches)
-    ?.replace(',', '.')?.toDoubleOrNull()?.takeIf { it > 0 }
+private fun leerLimite(texto: String) = validarMontoMovimiento(texto).valor
 
-private fun Double.comoEntrada() = toBigDecimal().stripTrailingZeros().toPlainString()
+private fun Long.comoEntrada() = toString()
 
-private fun List<MovimientoConCategoria>.totalGastado(): Double = map { it.movimiento.monto }.sumarImportes()
+private fun List<MovimientoConCategoria> .totalGastado() = map { it.movimiento.monto }.sumarImportes()

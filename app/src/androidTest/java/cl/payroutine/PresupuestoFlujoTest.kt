@@ -39,8 +39,8 @@ class PresupuestoFlujoTest {
             val categorias = repo.observarCategorias().first().filter { it.tipo == TipoMovimiento.Gasto }
             val conLimite = categorias.first().id
             val sinLimite = categorias[1].id
-            repo.guardarPresupuestoMensual(usuario.id, mes, null, mapOf(conLimite to 4_000.0))
-            repo.guardarPresupuestoMensual(usuario.id, anterior, 1_000.0, emptyMap())
+            repo.guardarPresupuestoMensual(usuario.id, mes, null, mapOf(conLimite to 4000L))
+            repo.guardarPresupuestoMensual(usuario.id, anterior, 1000L, emptyMap())
             val gasto = repo.registrarMovimiento(NuevoMovimiento("Gasto presupuestado", TipoMovimiento.Gasto, 1000, hoy, conLimite))
             repo.registrarMovimiento(NuevoMovimiento("Gasto fuera del límite", TipoMovimiento.Gasto, 2000, hoy, sinLimite))
             repo.registrarMovimiento(NuevoMovimiento("Gasto anterior", TipoMovimiento.Gasto, 1500, anterior.atDay(1), sinLimite))

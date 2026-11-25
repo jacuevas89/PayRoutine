@@ -54,6 +54,9 @@ internal data class PagoRealizado(val fila: PagoConCategoria, val fechaPago: Loc
 class FinanzasViewModel(aplicacion: Application) : AndroidViewModel(aplicacion) {
     private val repositorio = (aplicacion as PayRoutineApplication).repositorio
 
+    internal val consejos = repositorio.observarConsejos().onStart { repositorio.prepararConsejos() }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(), emptyList())
+
     val categorias = repositorio.observarCategorias()
     val movimientos = repositorio.observarMovimientos()
     val presupuestos = repositorio.observarPresupuestos()
