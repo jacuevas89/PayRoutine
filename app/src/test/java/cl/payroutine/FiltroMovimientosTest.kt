@@ -34,7 +34,7 @@ class FiltroMovimientosTest {
 
     private fun fila(id: Int, categoriaId: Int, instante: String, tipo: TipoMovimiento = TipoMovimiento.Gasto) =
         MovimientoConCategoria(
-            Movimiento(id = id, tipo = tipo, monto = 1000.0, fecha = Date.from(Instant.parse(instante)), categoriaId = categoriaId),
+            Movimiento(id = id, tipo = tipo, monto = 1000L, fecha = Date.from(Instant.parse(instante)), categoriaId = categoriaId),
             categoria = "Servicios",
         )
 }

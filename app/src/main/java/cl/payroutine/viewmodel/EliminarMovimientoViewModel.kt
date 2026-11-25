@@ -17,13 +17,13 @@ internal class EliminarMovimientoViewModel(aplicacion: Application) : AndroidVie
     private val estadoInterno = MutableStateFlow(EstadoEliminacionMovimiento.Disponible)
     val estado = estadoInterno.asStateFlow()
 
-    fun eliminar(id: Int) {
+    fun eliminar(id: Int, pagoId: Int? = null) {
         val actual = estadoInterno.value
         if (actual == EstadoEliminacionMovimiento.Eliminando || actual == EstadoEliminacionMovimiento.Eliminado) return
         estadoInterno.value = EstadoEliminacionMovimiento.Eliminando
         viewModelScope.launch {
             try {
-                repositorio.eliminarMovimiento(id)
+                if (pagoId == null) repositorio.eliminarMovimiento(id) else repositorio.deshacerPago(pagoId, id)
                 estadoInterno.value = EstadoEliminacionMovimiento.Eliminado
             } catch (error: SQLiteException) {
                 Log.e("EliminarMovimiento", "Error al eliminar el movimiento", error)

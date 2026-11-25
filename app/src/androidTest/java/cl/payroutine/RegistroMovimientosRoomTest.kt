@@ -5,7 +5,6 @@ import androidx.room.Room
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import cl.payroutine.datos.local.BaseDatosPayRoutine
-import cl.payroutine.datos.local.MIGRACION_5_6
 import cl.payroutine.datos.local.entidad.Movimiento
 import cl.payroutine.datos.local.entidad.TipoMovimiento
 import cl.payroutine.datos.repositorio.MONTO_MAXIMO_EXACTO
@@ -44,7 +43,7 @@ class RegistroMovimientosRoomTest {
             val zona = ZoneId.systemDefault()
             val hoy = LocalDate.now(zona)
             val instanteOriginal = Date.from(hoy.atTime(10, 30).atZone(zona).toInstant())
-            val gasto = Movimiento(tipo = TipoMovimiento.Gasto, monto = 5000.0, fecha = instanteOriginal, categoriaId = hogar.id)
+            val gasto = Movimiento(tipo = TipoMovimiento.Gasto, monto = 5000L, fecha = instanteOriginal, categoriaId = hogar.id)
             val idGasto = repositorio.insertar(gasto).toInt()
             val idIngreso = repositorio.registrarMovimiento(
                 NuevoMovimiento("Sueldo", TipoMovimiento.Ingreso, 50000, hoy, sueldo.id),
@@ -57,9 +56,9 @@ class RegistroMovimientosRoomTest {
             assertEquals(gasto.copy(id = idGasto), repositorio.observarMovimientos().first().single { it.id == idGasto })
             assertTrue(repositorio.editarMovimiento(idGasto, cambio))
             val editado = repositorio.observarMovimientos().first().single { it.id == idGasto }
-            assertEquals(gasto.copy(id = idGasto, monto = 11000.0, categoriaId = transporte.id, nota = "Taller", nombre = "Reparación"), editado)
+            assertEquals(gasto.copy(id = idGasto, monto = 11000L, categoriaId = transporte.id, nota = "Taller", nombre = "Reparación"), editado)
             val inicio = repositorio.observarInicio(flowOf(FechaLocal(hoy, zona)))
-            assertEquals(BigDecimal("39000.0"), inicio.first().saldo)
+            assertEquals(BigDecimal("39000"), inicio.first().saldo)
             val usos = repositorio.observarCategoriasConUso()
             assertEquals(0, usos.first().single { it.categoria.id == hogar.id }.cantidadMovimientos)
             assertEquals(1, usos.first().single { it.categoria.id == transporte.id }.cantidadMovimientos)
@@ -68,7 +67,7 @@ class RegistroMovimientosRoomTest {
             assertEquals(0, repositorio.eliminarMovimiento(idGasto))
             assertFalse(repositorio.editarMovimiento(idGasto, cambio))
             assertEquals(idIngreso, repositorio.observarMovimientos().first().single().id)
-            assertEquals(BigDecimal("50000.0"), inicio.first().saldo)
+            assertEquals(BigDecimal("50000"), inicio.first().saldo)
             assertEquals(0, usos.first().single { it.categoria.id == transporte.id }.cantidadMovimientos)
         } finally {
             base.close()
@@ -78,7 +77,7 @@ class RegistroMovimientosRoomTest {
     @Test
     fun registraAmbosTiposActualizaInicioYContadoresYPersisteAlReabrir() = runBlocking {
         val nombreBase = "rf23-${UUID.randomUUID()}.db"
-        var base = Room.databaseBuilder(contexto, BaseDatosPayRoutine::class.java, nombreBase).addMigrations(MIGRACION_5_6).build()
+        var base = BaseDatosPayRoutine.crear(contexto, nombreBase)
         try {
             val repositorio = RepositorioFinanzas(base)
             repositorio.prepararCategoriasIniciales()
@@ -96,15 +95,15 @@ class RegistroMovimientosRoomTest {
             assertNull(filas.last().nota)
             assertTrue(filas.all { it.fecha.toInstant().atZone(zona).toLocalDate() == hoy })
             val inicio = repositorio.observarInicio(flowOf(FechaLocal(hoy, zona))).first()
-            assertEquals(BigDecimal("500000.0"), inicio.ingresos)
-            assertEquals(BigDecimal("200000.0"), inicio.gastos)
-            assertEquals(BigDecimal("300000.0"), inicio.saldo)
+            assertEquals(BigDecimal("500000"), inicio.ingresos)
+            assertEquals(BigDecimal("200000"), inicio.gastos)
+            assertEquals(BigDecimal("300000"), inicio.saldo)
             val usos = repositorio.observarCategoriasConUso().first()
             assertEquals(1, usos.single { it.categoria.id == sueldo.id }.cantidadMovimientos)
             assertEquals(1, usos.single { it.categoria.id == hogar.id }.cantidadMovimientos)
 
             base.close()
-            base = Room.databaseBuilder(contexto, BaseDatosPayRoutine::class.java, nombreBase).addMigrations(MIGRACION_5_6).build()
+            base = BaseDatosPayRoutine.crear(contexto, nombreBase)
             assertEquals(filas, RepositorioFinanzas(base).observarMovimientos().first())
         } finally {
             base.close()
@@ -163,20 +162,20 @@ class RegistroMovimientosRoomTest {
                 sqlite.execSQL("INSERT INTO Usuario VALUES ('perfil-anterior', 'María Pérez', 'Mari')")
                 sqlite.version = 3
             }
-            val base = Room.databaseBuilder(contexto, BaseDatosPayRoutine::class.java, nombreBase).addMigrations(MIGRACION_5_6).build()
+            val base = BaseDatosPayRoutine.crear(contexto, nombreBase)
             try {
                 val repositorio = RepositorioFinanzas(base)
                 val anterior = repositorio.observarMovimientos().first().single()
                 assertEquals(54, anterior.id)
                 assertEquals("", anterior.nombre)
                 assertEquals("Nota anterior", anterior.nota)
-                assertEquals(24000.25, anterior.monto, 0.0)
+                assertEquals(24000L, anterior.monto)
                 assertEquals(42, anterior.categoriaId)
                 assertEquals("Personalizada", repositorio.observarCategorias().first().single().nombre)
                 assertEquals(31, repositorio.observarPresupuestos().first().single().id)
                 assertEquals(7, repositorio.observarPagos().first().single().id)
                 assertEquals("perfil-anterior", repositorio.observarUsuario().first()?.id)
-                assertEquals(6, base.openHelper.readableDatabase.version)
+                assertEquals(10, base.openHelper.readableDatabase.version)
                 assertNull(repositorio.obtenerRecordatorio())
             } finally {
                 base.close()

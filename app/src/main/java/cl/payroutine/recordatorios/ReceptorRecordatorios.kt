@@ -23,6 +23,7 @@ class ReceptorRecordatorios : BroadcastReceiver() {
                     )
                     AVISO_PRESUPUESTO -> recordatorios.recibirAvisoPresupuesto(intent.getLongExtra(EXTRA_DIA, Long.MIN_VALUE))
                     GENERAR_PRESUPUESTO -> recordatorios.restaurarPresupuesto()
+                    AVISO_PAGOS -> recordatorios.recibirAvisosPagos(intent.getLongExtra(EXTRA_DIA, Long.MAX_VALUE))
                     else -> recordatorios.restaurar()
                 }
             } catch (error: SQLiteException) {

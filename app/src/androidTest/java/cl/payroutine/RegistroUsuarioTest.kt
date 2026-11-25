@@ -1,11 +1,9 @@
 package cl.payroutine
 
 import android.database.sqlite.SQLiteDatabase
-import androidx.room.Room
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import cl.payroutine.datos.local.BaseDatosPayRoutine
-import cl.payroutine.datos.local.MIGRACION_5_6
 import cl.payroutine.datos.repositorio.RepositorioFinanzas
 import java.util.UUID
 import kotlinx.coroutines.async
@@ -35,7 +33,7 @@ class RegistroUsuarioTest {
                 assertFalse(categorias.single { it.id == 1 }.esPredefinida)
                 assertEquals(16, categorias.count { it.esPredefinida })
                 assertEquals("Compra", repositorio.observarMovimientos().first().single().nota)
-                assertEquals(40000.0, repositorio.observarPresupuestos().first().single().montoPresupuestado, 0.0)
+                assertEquals(40000L, repositorio.observarPresupuestos().first().single().montoPresupuestado)
                 assertEquals("Internet", repositorio.observarPagos().first().single().descripcion)
 
                 val nombre = "María-José D'Ávila"
@@ -94,7 +92,7 @@ class RegistroUsuarioTest {
     }
 
     private inline fun <T> conBase(nombre: String, usar: (BaseDatosPayRoutine) -> T): T {
-        val base = Room.databaseBuilder(contexto, BaseDatosPayRoutine::class.java, nombre).addMigrations(MIGRACION_5_6).build()
+        val base = BaseDatosPayRoutine.crear(contexto, nombre)
         try {
             return usar(base)
         } finally {

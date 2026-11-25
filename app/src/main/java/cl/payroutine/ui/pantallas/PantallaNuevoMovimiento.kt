@@ -53,6 +53,7 @@ internal fun FormularioMovimiento(
     estadoRegistro: EstadoRegistroMovimiento,
     guardar: (NuevoMovimiento) -> Unit,
     movimientoInicial: Movimiento? = null,
+    soloFechaYNota: Boolean = false,
     volver: () -> Unit,
 ) {
     val idEdicion = movimientoInicial?.id
@@ -66,7 +67,7 @@ internal fun FormularioMovimiento(
     }
     var nombre by rememberSaveable(idEdicion) { mutableStateOf(movimientoInicial?.nombre.orEmpty()) }
     var monto by rememberSaveable(idEdicion) {
-        val texto = movimientoInicial?.monto?.toBigDecimal()?.stripTrailingZeros()?.toPlainString()?.replace('.', ',')
+        val texto = movimientoInicial?.monto?.toString()
         mutableStateOf(texto.orEmpty())
     }
     var nota by rememberSaveable(idEdicion) { mutableStateOf(movimientoInicial?.nota.orEmpty()) }
@@ -97,6 +98,7 @@ internal fun FormularioMovimiento(
     Column(Modifier.fillMaxSize().imePadding()) {
         Cabecera(
             titulo = when {
+                soloFechaYNota -> "Editar fecha y nota"
                 movimientoInicial != null -> if (ingreso) "Editar ingreso" else "Editar gasto"
                 ingreso -> "Nuevo ingreso"
                 else -> "Nuevo gasto"
@@ -117,6 +119,7 @@ internal fun FormularioMovimiento(
             OutlinedTextField(
                 value = nombre, onValueChange = { nombre = it },
                 modifier = Modifier.fillMaxWidth(), enabled = !bloqueado,
+                readOnly = soloFechaYNota,
                 label = { Text("Nombre del movimiento") }, singleLine = true,
                 isError = intentoGuardar && nombre.isBlank(),
                 supportingText = if (intentoGuardar && nombre.isBlank()) ({ Text("Ingresa el nombre del movimiento") }) else null,
@@ -124,9 +127,10 @@ internal fun FormularioMovimiento(
                 shape = RoundedCornerShape(12.dp),
             )
             Tarjeta(Modifier.fillMaxWidth(), espacio = 4) {
-                OutlinedTextField(
+                CampoMonto(
                     value = monto, onValueChange = { monto = it },
                     modifier = Modifier.fillMaxWidth(), enabled = !bloqueado,
+                    readOnly = soloFechaYNota,
                     label = { Text("Monto") }, prefix = { Text("$ ", color = color) },
                     singleLine = true, placeholder = { Text("0") },
                     isError = intentoGuardar && montoValidado.error != null,
@@ -160,6 +164,7 @@ internal fun FormularioMovimiento(
                         BotonPrincipal("Reintentar", alPulsar = reintentarCategorias)
                     }
                     categorias.isEmpty() -> Etiqueta("No hay categorías disponibles.")
+                    soloFechaYNota -> Etiqueta(seleccionada?.nombre.orEmpty(), Texto)
                     else -> FlowRow(
                         modifier = Modifier.selectableGroup(),
                         horizontalArrangement = Arrangement.spacedBy(8.dp),

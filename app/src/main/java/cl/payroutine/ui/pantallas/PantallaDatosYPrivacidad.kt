@@ -89,19 +89,19 @@ internal fun PantallaInformacionPrivacidad(volver: () -> Unit) {
         Cuerpo(Modifier.weight(1f)) {
             Tarjeta(Modifier.fillMaxWidth(), espacio = 8) {
                 Destacado("Qué datos se guardan")
-                Etiqueta("Tu perfil contiene tu nombre completo, apodo y un identificador único (UUID). La base local también guarda los movimientos, categorías, presupuestos y pagos, incluidas las cuotas, cuando hay registros.")
+                Etiqueta("PayRoutine guarda tu nombre, apodo, ingresos, gastos, categorías, presupuestos, pagos y cuotas. También guarda tus preferencias y avisos.")
             }
             Tarjeta(Modifier.fillMaxWidth(), espacio = 8) {
                 Destacado("Para qué se utilizan")
-                Etiqueta("El apodo personaliza el saludo y el perfil. Los registros financieros permiten calcular los importes de Inicio y consultar los movimientos. Algunas pantallas aún incluyen datos de ejemplo.")
+                Etiqueta("La app usa esta información para saludarte, organizar tus cuentas, calcular tus resúmenes y mostrarte recordatorios.")
             }
             Tarjeta(Modifier.fillMaxWidth(), espacio = 8) {
                 Destacado("Dónde se almacenan")
-                Etiqueta("PayRoutine guarda los datos en una base SQLite privada de este dispositivo, incluidas las preferencias de presupuesto y de recordatorios.")
+                Etiqueta("Tu información se queda en este teléfono. PayRoutine no la envía a servidores ni la incluye en copias de seguridad o transferencias entre teléfonos.")
             }
             Tarjeta(Modifier.fillMaxWidth(), espacio = 8) {
                 Destacado("Cómo eliminarlos")
-                Etiqueta("Abre Ajustes → Datos y privacidad → Eliminar todos los datos y confirma. Se conservarán las categorías predefinidas y se eliminarán las personalizadas. La app volverá a Bienvenida para que puedas configurar un perfil nuevo.")
+                Etiqueta("En Ajustes, entra en Datos y privacidad y elige Eliminar todos los datos. Al confirmar, se borra tu información y vuelves a la pantalla de bienvenida.")
             }
         }
     }

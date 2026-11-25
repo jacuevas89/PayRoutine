@@ -3,9 +3,11 @@ package cl.payroutine.ui.pantallas
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -25,6 +27,7 @@ import cl.payroutine.viewmodel.EstadoCategorias
 import cl.payroutine.viewmodel.FiltroMovimientos
 import java.time.Instant
 import java.time.LocalDate
+import java.time.YearMonth
 import java.time.ZoneId
 import java.time.ZoneOffset
 
@@ -47,8 +50,21 @@ internal fun PantallaMovimientos(
     val categoria = categorias.find { it.id == categoriaId }
     val filtro = FiltroMovimientos(tipo, categoriaId, desdeMillis?.let(::diaDelCalendario), hastaMillis?.let(::diaDelCalendario))
     val filas = remember(datos?.movimientos, datos?.fecha?.zona, filtro) {
-        datos?.let { filtro.aplicar(it.movimientos, it.fecha.zona) }.orEmpty()
+        datos?.let { filtro.aplicar(it.movimientos, it.fecha.zona) }
+            .orEmpty().sortedWith(compareByDescending<MovimientoConCategoria> { it.movimiento.fecha.time }
+                .thenByDescending { it.movimiento.id })
     }
+    var pagina by rememberSaveable(tipo, categoriaId, desdeMillis, hastaMillis) { mutableStateOf(0) }
+    val ultimaPagina = ((filas.size - 1).coerceAtLeast(0)) / MOVIMIENTOS_POR_PAGINA
+    val paginaVisible = pagina.coerceAtMost(ultimaPagina)
+    val grupos = remember(filas, paginaVisible, datos?.fecha?.zona) {
+        filas.drop(paginaVisible * MOVIMIENTOS_POR_PAGINA).take(MOVIMIENTOS_POR_PAGINA).groupBy {
+            YearMonth.from(it.movimiento.fecha.toInstant().atZone(requireNotNull(datos).fecha.zona))
+        }
+    }
+    val lista = rememberLazyListState()
+    LaunchedEffect(ultimaPagina, datos != null) { if (datos != null && pagina != paginaVisible) pagina = paginaVisible }
+    LaunchedEffect(filtro, paginaVisible) { lista.scrollToItem(0) }
 
     fun seleccionarTipo(nuevoTipo: TipoMovimiento?) {
         if (nuevoTipo != null && categoria?.tipo != nuevoTipo) categoriaId = null
@@ -58,6 +74,7 @@ internal fun PantallaMovimientos(
     Column {
         Cabecera("Movimientos")
         LazyColumn(
+            state = lista,
             modifier = Modifier.fillMaxWidth(),
             contentPadding = PaddingValues(start = 16.dp, top = 16.dp, end = 16.dp, bottom = 72.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -126,8 +143,19 @@ internal fun PantallaMovimientos(
                 datos == null -> item { Etiqueta("Cargando movimientos…") }
                 datos.movimientos.isEmpty() -> item { Etiqueta("Todavía no tienes movimientos registrados.") }
                 filas.isEmpty() -> item { Etiqueta("No hay movimientos que coincidan con los filtros.") }
-                else -> items(filas, key = { it.movimiento.id }) { fila ->
-                    TarjetaMovimiento(fila, datos.fecha.zona) { verMovimiento(fila.movimiento.id) }
+                else -> grupos.forEach { (mes, movimientos) ->
+                    item(key = mes.toString()) { Destacado(mesEnPantalla(mes.atDay(1))) }
+                    items(movimientos, key = { it.movimiento.id }) { fila ->
+                        TarjetaMovimiento(fila, datos.fecha.zona) { verMovimiento(fila.movimiento.id) }
+                    }
+                }
+            }
+            if (ultimaPagina > 0) item {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically) {
+                    TextButton(onClick = { pagina = paginaVisible - 1 }, enabled = paginaVisible > 0) { Text("Anterior") }
+                    Etiqueta("Página ${paginaVisible + 1} de ${ultimaPagina + 1}")
+                    TextButton(onClick = { pagina = paginaVisible + 1 }, enabled = paginaVisible < ultimaPagina) { Text("Siguiente") }
                 }
             }
         }
@@ -141,6 +169,8 @@ internal fun PantallaMovimientos(
         }
     }
 }
+
+private const val MOVIMIENTOS_POR_PAGINA = 20
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable

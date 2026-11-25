@@ -9,52 +9,67 @@ import androidx.room.TypeConverters
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 import cl.payroutine.datos.local.dao.CategoriaDao
+import cl.payroutine.datos.local.dao.AvisoEmitidoDao
+import cl.payroutine.datos.local.dao.ConsejoAhorroDao
 import cl.payroutine.datos.local.dao.MovimientoDao
+import cl.payroutine.datos.local.dao.ObligacionPagoDao
 import cl.payroutine.datos.local.dao.PagoPendienteDao
 import cl.payroutine.datos.local.dao.PresupuestoDao
 import cl.payroutine.datos.local.dao.PresupuestoMensualDao
 import cl.payroutine.datos.local.dao.RecordatorioMovimientoDao
+import cl.payroutine.datos.local.dao.RecordatorioPagoDao
 import cl.payroutine.datos.local.dao.UsuarioDao
 import cl.payroutine.datos.local.entidad.Categoria
+import cl.payroutine.datos.local.entidad.AvisoEmitido
+import cl.payroutine.datos.local.entidad.ConsejoAhorro
 import cl.payroutine.datos.local.entidad.Movimiento
+import cl.payroutine.datos.local.entidad.ObligacionPago
 import cl.payroutine.datos.local.entidad.PagoPendiente
 import cl.payroutine.datos.local.entidad.Presupuesto
 import cl.payroutine.datos.local.entidad.PresupuestoMensual
 import cl.payroutine.datos.local.entidad.PreferenciasPresupuesto
 import cl.payroutine.datos.local.entidad.RecordatorioMovimiento
+import cl.payroutine.datos.local.entidad.RecordatorioPago
+import cl.payroutine.datos.local.entidad.ConfiguracionAvisoPago
 import cl.payroutine.datos.local.entidad.Usuario
 
 @Database(
     entities = [
         Categoria::class, Movimiento::class, Presupuesto::class,
         PagoPendiente::class, Usuario::class, RecordatorioMovimiento::class,
-        PresupuestoMensual::class, PreferenciasPresupuesto::class,
+        PresupuestoMensual::class, PreferenciasPresupuesto::class, ObligacionPago::class,
+        ConfiguracionAvisoPago::class, RecordatorioPago::class, ConsejoAhorro::class, AvisoEmitido::class,
     ],
-    version = 6,
+    version = 10,
     autoMigrations = [
         AutoMigration(from = 1, to = 2),
         AutoMigration(from = 2, to = 3, spec = MigracionCategoriasPredefinidas::class),
         AutoMigration(from = 3, to = 4),
         AutoMigration(from = 4, to = 5),
+        AutoMigration(from = 8, to = 9),
     ],
 )
 @TypeConverters(ConvertidoresRoom::class)
 abstract class BaseDatosPayRoutine : RoomDatabase() {
     abstract fun categoriaDao(): CategoriaDao
+    abstract fun consejoAhorroDao(): ConsejoAhorroDao
+    abstract fun avisoEmitidoDao(): AvisoEmitidoDao
     abstract fun movimientoDao(): MovimientoDao
     abstract fun presupuestoDao(): PresupuestoDao
     abstract fun presupuestoMensualDao(): PresupuestoMensualDao
     abstract fun pagoPendienteDao(): PagoPendienteDao
+    abstract fun obligacionPagoDao(): ObligacionPagoDao
     abstract fun usuarioDao(): UsuarioDao
     abstract fun recordatorioMovimientoDao(): RecordatorioMovimientoDao
+    abstract fun recordatorioPagoDao(): RecordatorioPagoDao
 
     companion object {
-        fun crear(contexto: Context): BaseDatosPayRoutine =
+        fun crear(contexto: Context, nombre: String = "payroutine.db"): BaseDatosPayRoutine =
             Room.databaseBuilder(
                 contexto.applicationContext,
                 BaseDatosPayRoutine::class.java,
-                "payroutine.db",
-            ).addMigrations(MIGRACION_5_6).build()
+                nombre,
+            ).addMigrations(MIGRACION_5_6, MIGRACION_6_7, MIGRACION_7_8, MIGRACION_9_10).build()
     }
 }
 
@@ -79,5 +94,42 @@ internal val MIGRACION_5_6 = object : Migration(5, 6) {
                 FOREIGN KEY(usuarioId) REFERENCES Usuario(id) ON UPDATE NO ACTION ON DELETE CASCADE
             )
         """.trimIndent())
+    }
+}
+
+private val MIGRACION_6_7 = object : Migration(6, 7) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        // La versión 5 local de Pagos tenía obligaciones en lugar de recordatorios.
+        db.execSQL("""
+            CREATE TABLE IF NOT EXISTS RecordatorioMovimiento (
+                usuario_id TEXT NOT NULL PRIMARY KEY, activo INTEGER NOT NULL, minutoDelDia INTEGER NOT NULL,
+                fechaInicial INTEGER, fechaReferencia INTEGER NOT NULL, recurrencia TEXT NOT NULL,
+                programacionId TEXT NOT NULL, ultimoAviso INTEGER,
+                FOREIGN KEY(usuario_id) REFERENCES Usuario(id) ON UPDATE NO ACTION ON DELETE CASCADE
+            )
+        """.trimIndent())
+        db.execSQL("""
+            CREATE TABLE IF NOT EXISTS ObligacionPago (
+                id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, nombre TEXT NOT NULL, categoria_id INTEGER NOT NULL,
+                FOREIGN KEY(categoria_id) REFERENCES Categoria(id) ON UPDATE NO ACTION ON DELETE NO ACTION
+            )
+        """.trimIndent())
+        db.execSQL("CREATE INDEX IF NOT EXISTS index_ObligacionPago_categoria_id ON ObligacionPago(categoria_id)")
+        val tieneObligacion = db.query("PRAGMA table_info(PagoPendiente)").use { columnas ->
+            val nombre = columnas.getColumnIndexOrThrow("name")
+            generateSequence { if (columnas.moveToNext()) columnas.getString(nombre) else null }
+                .any { it == "obligacion_id" }
+        }
+        if (!tieneObligacion) {
+            db.execSQL("ALTER TABLE PagoPendiente ADD COLUMN obligacion_id INTEGER REFERENCES ObligacionPago(id)")
+        }
+        db.execSQL("CREATE INDEX IF NOT EXISTS index_PagoPendiente_obligacion_id ON PagoPendiente(obligacion_id)")
+    }
+}
+
+private val MIGRACION_7_8 = object : Migration(7, 8) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE PagoPendiente ADD COLUMN movimiento_id INTEGER REFERENCES Movimiento(id)")
+        db.execSQL("CREATE UNIQUE INDEX index_PagoPendiente_movimiento_id ON PagoPendiente(movimiento_id)")
     }
 }

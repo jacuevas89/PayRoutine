@@ -11,7 +11,7 @@ import kotlinx.coroutines.flow.Flow
 data class FilaPresupuestoMensual(
     @Embedded val cabecera: PresupuestoMensual,
     val categoriaId: Int?,
-    val limite: Double?,
+    val limite: Long?,
 )
 
 @Dao

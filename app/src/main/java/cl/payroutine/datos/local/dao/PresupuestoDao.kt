@@ -16,6 +16,9 @@ interface PresupuestoDao {
     @Query("DELETE FROM Presupuesto WHERE anio = :anio AND mes = :mes")
     suspend fun eliminarPeriodo(anio: Int, mes: Int)
 
+    @Query("SELECT * FROM Presupuesto WHERE anio = :anio AND mes = :mes AND categoria_id IS NULL")
+    suspend fun sinCategoria(anio: Int, mes: Int): List<Presupuesto>
+
     @Insert
     suspend fun insertarTodos(entidades: List<Presupuesto>)
 
